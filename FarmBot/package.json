@@ -1,0 +1,24 @@
+{
+  "name": "farmbot",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/wesleyryolson/PixelFarm.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/wesleyryolson/PixelFarm/issues"
+  },
+  "homepage": "https://github.com/wesleyryolson/PixelFarm#readme",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "ws": "^8.22.0"
+  }
+}

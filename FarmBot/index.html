@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>FarmBot Overlay</title>
+	<style>
+		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #85daff; }
+		body { image-rendering: pixelated; }
+		#game { width: 100%; height: 100%; }
+		canvas { display: block; image-rendering: pixelated; }
+	</style>
+	<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+</head>
+<body>
+	<div id="game"></div>
+	<script type="module">
+		import { addIsometricSprite, projectIsometricPosition } from './utilities.js';
+
+		const ISLAND_TILE_WIDTH = 160;
+		const ISLAND_TILE_HEIGHT = 80;
+		const ISLAND_ORIGIN_Y_OFFSET = -40;
+
+		if (typeof Phaser === 'undefined') {
+			console.error('Phaser failed to load. Check internet access and reload the overlay.');
+			throw new Error('Phaser did not load from the CDN.');
+		}
+		class OverlayScene extends Phaser.Scene {
+			constructor() {
+				super({ key: 'FarmOverlay' });
+			}
+
+			create() {
+				this.cameras.main.setZoom(1.25);
+				this.drawBackdrop();
+				this.drawTiles();
+				this.makeFarmerTexture();
+				this.farmer = this.createFarmer();
+
+				this.scale.on('resize', () => {
+					this.children.removeAll();
+					this.drawBackdrop();
+					this.drawTiles();
+					this.farmer = this.createFarmer();
+				});
+				this.connectToBot();
+			}
+			drawBackdrop() {
+				const { width, height } = this.scale;
+				this.cameras.main.setBackgroundColor('#85daff');
+				const waterPixels = this.add.graphics().setDepth(0);
+				const colors = [0x61bfe8, 0x70caef, 0xa8eaff, 0xb9efff, 0x79d2f2];
+				const hash = (x, y, salt = 0) => {
+					let value = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(salt, 1442695041)) | 0;
+					value = Math.imul(value ^ (value >>> 13), 1274126177);
+					return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
+				};
+
+				// Scatter irregular pixels over the water; their alpha fades near the edges.
+				for (let row = 0; row < Math.ceil(height / 18); row++) {
+					for (let col = 0; col < Math.ceil(width / 22); col++) {
+						if (hash(col, row) > 0.68) continue;
+						const x = col * 22 + Math.floor(hash(col, row, 1) * 16);
+						const y = row * 18 + Math.floor(hash(col, row, 2) * 12);
+						const edgeFade = Math.max(0, Math.min(x / 100, (width - x) / 100, y / 70, (height - y) / 70, 1));
+						if (!edgeFade) continue;
+						const color = colors[Math.floor(hash(col, row, 3) * colors.length)];
+						waterPixels.fillStyle(color, edgeFade * (0.3 + hash(col, row, 4) * 0.42));
+						waterPixels.fillRect(x, y, 3 + Math.floor(hash(col, row, 5) * 8), 2 + Math.floor(hash(col, row, 6) * 3));
+						if (hash(col, row, 7) > 0.42) {
+							waterPixels.fillStyle(0x55b4e1, edgeFade * 0.42);
+							waterPixels.fillRect(x + 4, y - 3, 3 + Math.floor(hash(col, row, 8) * 5), 2);
+						}
+					}
+				}
+			}
+			drawTiles() {
+				const tileWidth = ISLAND_TILE_WIDTH;
+				const tileHeight = ISLAND_TILE_HEIGHT;
+				const originX = this.scale.width / 2;
+				const originY = this.scale.height / 2 + ISLAND_ORIGIN_Y_OFFSET;
+				// A 2x2 grid of four 2:1 tiles forms one compact diamond island.
+				const cells = [
+					{ gridX: 0, gridY: 0 },
+					{ gridX: 1, gridY: 0 },
+					{ gridX: 0, gridY: 1 },
+					{ gridX: 1, gridY: 1 }
+				];
+
+				const island = this.add.graphics().setDepth(2);
+				const depth = 14;
+				// Draw the two visible soil faces beneath the grass tops.
+				for (const cell of cells) {
+					const { x, y } = projectIsometricPosition(cell.gridX, cell.gridY, {
+						originX, originY, tileWidth, tileHeight
+					});
+					const right = new Phaser.Geom.Point(x + tileWidth / 2, y);
+					const bottom = new Phaser.Geom.Point(x, y + tileHeight / 2);
+					const left = new Phaser.Geom.Point(x - tileWidth / 2, y);
+					island.fillStyle(0x4b935f, 1);
+					island.fillPoints([right, bottom, new Phaser.Geom.Point(bottom.x, bottom.y + depth), new Phaser.Geom.Point(right.x, right.y + depth)], true);
+					island.fillStyle(0x5da96f, 1);
+					island.fillPoints([bottom, left, new Phaser.Geom.Point(left.x, left.y + depth), new Phaser.Geom.Point(bottom.x, bottom.y + depth)], true);
+				}
+
+			// Grass tops are ordered back to front so near tiles sit over the soil.
+			cells.sort((a, b) => (a.gridX + a.gridY) - (b.gridX + b.gridY));
+			for (const cell of cells) {
+				const { x, y } = projectIsometricPosition(cell.gridX, cell.gridY, {
+					originX, originY, tileWidth, tileHeight
+				});
+				const g = this.add.graphics().setDepth(10 + cell.gridX + cell.gridY);
+				g.fillStyle(0x9cffac, 1);
+				g.fillPoints([
+					new Phaser.Geom.Point(x, y - tileHeight / 2),
+					new Phaser.Geom.Point(x + tileWidth / 2, y),
+					new Phaser.Geom.Point(x, y + tileHeight / 2),
+					new Phaser.Geom.Point(x - tileWidth / 2, y)
+				], true);
+				g.fillStyle(0xbaffc6, 1);
+				g.fillRect(Math.round(x - 10), Math.round(y - 3), 8, 3);
+				g.fillRect(Math.round(x + 10), Math.round(y + 2), 5, 3);
+			}
+			}
+			createFarmer() {
+				return addIsometricSprite(this, 'farmer', 0, 0, {
+					originX: this.scale.width / 2,
+					originY: this.scale.height / 2 + ISLAND_ORIGIN_Y_OFFSET,
+					tileWidth: ISLAND_TILE_WIDTH,
+					tileHeight: ISLAND_TILE_HEIGHT,
+					elevation: 0,
+					scale: 4,
+					alpha: 0
+				}).setDepth(1000);
+			}
+			makeFarmerTexture() {
+				if (this.textures.exists('farmer')) return;
+				const g = this.make.graphics({ x: 0, y: 0, add: false });
+				// 16x20 default farmer sprite, drawn from crisp 2px blocks.
+				g.fillStyle(0x4b2d2c); g.fillRect(3, 0, 10, 2); g.fillRect(1, 2, 14, 2);
+				g.fillStyle(0xf2c49b); g.fillRect(2, 4, 12, 8); g.fillRect(4, 12, 8, 2);
+				g.fillStyle(0x2a2538); g.fillRect(4, 7, 2, 2); g.fillRect(10, 7, 2, 2); g.fillRect(7, 10, 2, 1);
+				g.fillStyle(0x3475a2); g.fillRect(2, 14, 12, 5); g.fillRect(0, 15, 2, 4); g.fillRect(14, 15, 2, 4);
+				g.fillStyle(0x593b32); g.fillRect(3, 19, 4, 1); g.fillRect(9, 19, 4, 1);
+				g.generateTexture('farmer', 16, 20);
+				g.destroy();
+			}
+			showHarvest() {
+				if (this.harvestTween) this.harvestTween.stop();
+				const position = projectIsometricPosition(0, 0, {
+					originX: this.scale.width / 2,
+					originY: this.scale.height / 2 + ISLAND_ORIGIN_Y_OFFSET,
+					tileWidth: ISLAND_TILE_WIDTH,
+					tileHeight: ISLAND_TILE_HEIGHT
+				});
+				this.farmer.setPosition(position.x, position.y).setAlpha(0).setScale(3.5);
+				this.harvestTween = this.tweens.add({
+					targets: this.farmer, alpha: 1, scale: 4, duration: 180,
+					onComplete: () => {
+						this.time.delayedCall(2600, () => {
+							this.tweens.add({ targets: this.farmer, alpha: 0, duration: 350 });
+						});
+					}
+				});
+			}
+			connectToBot() {
+				const socket = new WebSocket('ws://localhost:8080');
+				socket.addEventListener('message', (event) => {
+					try {
+						const message = JSON.parse(event.data);
+						if (message.type === 'command.harvest') {
+							this.showHarvest();
+						}
+					} catch (error) {
+						console.warn('Ignored invalid bot message:', error);
+					}
+				});
+				socket.addEventListener('close', () => {
+					setTimeout(() => this.connectToBot(), 2000);
+				});
+				socket.addEventListener('error', () => socket.close());
+			}
+		}
+
+		new Phaser.Game({
+			type: Phaser.CANVAS,
+			parent: 'game',
+			width: window.innerWidth,
+			height: window.innerHeight,
+			backgroundColor: '#85daff',
+			pixelArt: true,
+			render: { antialias: false, pixelArt: true, roundPixels: true },
+			scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+			scene: [OverlayScene]
+		});
+	</script>
+</body>
+</html>
