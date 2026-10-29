@@ -5,21 +5,126 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>FarmBot Overlay</title>
 	<style>
-		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #85daff; }
+		@font-face {
+			font-family: 'Kiwi Soda';
+			src: url('/assets/KiwiSoda.ttf') format('truetype');
+			font-display: swap;
+		}
+		@font-face {
+			font-family: 'Pixelify Sans';
+			src: url('/assets/PixelifySans-VariableFont_wght.ttf') format('truetype');
+			font-style: normal;
+			font-weight: 400 700;
+			font-display: swap;
+		}
+		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #7fc7e4; }
 		body { image-rendering: pixelated; }
 		#game { width: 100%; height: 100%; }
 		canvas { display: block; image-rendering: pixelated; }
+		#farm-menu {
+			position: fixed; z-index: 5; inset: 0;
+			color: #ffdb55; font-family: 'Pixelify Sans', monospace; font-weight: 700;
+			image-rendering: pixelated; pointer-events: none; user-select: none;
+			--balance-bottom: clamp(64px, 17vh, 180px);
+			--command-center-offset: clamp(25px, 4.23vw, 43px);
+		}
+		#farm-menu .balance-group {
+			position: absolute; left: 32%; bottom: var(--balance-bottom); transform: translateX(-50%);
+			display: flex; align-items: center; gap: 8px; white-space: nowrap;
+		}
+		#farm-menu .balance-label, #farm-menu #global-balance, #farm-menu .command-text {
+			font-size: clamp(15px, 2.45vw, 25px); line-height: 1.15;
+			-webkit-text-stroke: 2px #050606; paint-order: stroke fill;
+			text-shadow: 2px 2px #050606;
+		}
+		#farm-menu #global-balance { color: #fff4d7; }
+		#farm-menu .coin-icon {
+			display: inline-block; width: clamp(15px, 2.45vw, 25px); height: clamp(15px, 2.45vw, 25px); flex: none; object-fit: contain; margin-left: -4px;
+			image-rendering: pixelated; vertical-align: middle;
+		}
+		#farm-menu .commands-group {
+			position: absolute; left: 68%; bottom: calc(var(--balance-bottom) - var(--command-center-offset));
+			transform: translateX(-50%); display: grid; justify-items: center; gap: 0;
+		}
+		#farm-menu .command-row { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+		#farm-menu .command-text { color: #fff4d7; }
+		#farm-menu .command-gold { color: #ffd94a; }
+		#farm-menu .plant-emoji {
+			display: inline-block; width: clamp(15px, 2.45vw, 24px); height: clamp(15px, 2.45vw, 24px); flex: none;
+			image-rendering: pixelated;
+			filter: drop-shadow(1px 0 0 #050606) drop-shadow(-1px 0 0 #050606)
+				drop-shadow(0 1px 0 #050606) drop-shadow(0 -1px 0 #050606)
+				drop-shadow(1px 1px 0 #050606);
+		}
+		#debug-island {
+			position: fixed; z-index: 7; left: 8px; top: 50%; transform: translateY(-50%);
+			display: grid; gap: 2px; justify-items: center; min-width: 52px; padding: 5px 4px;
+			color: #fff1c7; background: #624633; border: 2px solid #211a16;
+			box-shadow: 2px 2px 0 #211a16; font: 10px/1.1 'Pixelify Sans', monospace;
+			cursor: pointer; image-rendering: pixelated;
+		}
+		#debug-island strong { color: #ffe178; font-size: 14px; }
+		#debug-island:hover { background: #79553c; }
+		#debug-island:focus-visible { outline: 2px solid #fff1c7; outline-offset: 2px; }
+		@media (max-width: 600px) {
+			#farm-menu { --balance-bottom: clamp(60px, 17vh, 110px); --command-center-offset: clamp(19px, 5.5vw, 28px); }
+			#debug-island { left: 4px; min-width: 44px; padding: 4px 3px; font-size: 9px; }
+			#debug-island strong { font-size: 12px; }
+			#farm-menu .balance-group { left: 32%; }
+			#farm-menu .commands-group { left: 68%; }
+			#farm-menu .balance-group { gap: 3px; }
+			#farm-menu .balance-label, #farm-menu #global-balance, #farm-menu .command-text { font-size: clamp(11px, 3.2vw, 16px); }
+			#farm-menu .coin-icon { width: clamp(11px, 3.2vw, 16px); height: clamp(11px, 3.2vw, 16px); margin-left: -2px; }
+			#farm-menu .command-row { gap: 2px; }
+			#farm-menu .plant-emoji { width: clamp(11px, 3.2vw, 16px); height: clamp(11px, 3.2vw, 16px); }
+		}
 	</style>
 	<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
 </head>
 <body>
 	<div id="game"></div>
+	<button id="debug-island" type="button" aria-label="Cycle debug island size" title="Cycle island preview size">
+		<span>DEBUG</span><strong id="debug-island-size">1x1</strong>
+	</button>
+	<aside id="farm-menu" aria-label="Farm guide">
+		<div class="balance-group">
+			<span class="balance-label">BALANCE:</span>
+			<strong id="global-balance">$0</strong>
+			<img class="coin-icon" src="/assets/coin.png" alt="" aria-hidden="true">
+		</div>
+		<section class="commands-group" aria-label="Commands">
+			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text"><span class="command-gold">!harvest</span> #</span></div>
+			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text"><span class="command-gold">!water</span> #</span></div>
+			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text command-gold">!shop</span></div>
+			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text"><span class="command-gold">!buy</span> &lt;plant&gt; #</span></div>
+		</section>
+	</aside>
 	<script type="module">
-		import { addIsometricSprite, projectIsometricPosition } from './utilities.js';
+		import { addIsometricSprite, projectIsometricPosition, spawnHarvestPuff } from './utilities.js';
 
 		const ISLAND_TILE_WIDTH = 160;
 		const ISLAND_TILE_HEIGHT = 80;
-		const ISLAND_ORIGIN_Y_OFFSET = -40;
+		const ISLAND_SIDE_DEPTH = 18;
+		const ISLAND_ZOOM_BY_LEVEL = { 1: 1.9, 2: 1.4, 3: 1.0 };
+		const CROP_GROWTH_MS = { potato: 30_000, carrot: 45_000, onion: 60_000 };
+		const getTileCoordinate = (tile, level) => {
+			if (!Number.isInteger(tile) || tile < 1 || tile > level * level) return null;
+			return { gridX: (tile - 1) % level, gridY: Math.floor((tile - 1) / level) };
+		};
+		const getTilePosition = (scene, tile, level = scene.latestFarmState.level || 1, elevation = 0) => {
+			const coordinate = getTileCoordinate(tile, level);
+			if (!coordinate) return null;
+			return {
+				...coordinate,
+				...projectIsometricPosition(coordinate.gridX, coordinate.gridY, {
+					originX: scene.scale.width / 2,
+					originY: scene.scale.height / 2 - (level - 1) * ISLAND_TILE_HEIGHT / 2,
+					tileWidth: ISLAND_TILE_WIDTH,
+					tileHeight: ISLAND_TILE_HEIGHT,
+					elevation
+				})
+			};
+		};
 
 		if (typeof Phaser === 'undefined') {
 			console.error('Phaser failed to load. Check internet access and reload the overlay.');
@@ -29,103 +134,286 @@
 			constructor() {
 				super({ key: 'FarmOverlay' });
 			}
+			preload() {
+				this.load.image('island-1x1', '/assets/1x1.png');
+				this.load.image('island-2x2', '/assets/2x2.png');
+				this.load.image('island-2x2-signs', '/assets/2x2signs.png');
+				this.load.image('carrot-stage-1', '/assets/Carrot1.png');
+				this.load.image('carrot-stage-2', '/assets/Carrot2.png');
+				this.load.image('carrot-stage-3', '/assets/Carrot3.png');
+				this.load.image('empty-sack', '/assets/emptySack.png');
+				this.load.image('wet-overlay', '/assets/WetOverlay.png');
+				this.load.image('watering-can', '/assets/wateringCan.png');
+			}
 
 			create() {
-				this.cameras.main.setZoom(1.25);
+				this.latestFarmState = { level: 1, crops: {}, farmName: "Streamer's farm" };
+				this.debugIslandLevel = null;
 				this.drawBackdrop();
-				this.drawTiles();
+				this.drawTiles(1);
 				this.makeFarmerTexture();
+				this.makeCropTextures();
 				this.farmer = this.createFarmer();
+				this.drawFarmTitle();
+				this.renderCrops(this.latestFarmState.crops);
+				document.getElementById('debug-island').addEventListener('click', () => {
+					const currentLevel = this.debugIslandLevel || this.latestFarmState.level || 1;
+					this.debugIslandLevel = currentLevel % 3 + 1;
+					this.latestFarmState = { ...this.latestFarmState, level: this.debugIslandLevel };
+					document.getElementById('debug-island-size').textContent = `${this.debugIslandLevel}x${this.debugIslandLevel}`;
+					this.drawTiles(this.debugIslandLevel);
+					this.updateWetOverlays(this.latestFarmState.wetness);
+					this.drawFarmTitle();
+					this.renderCrops(this.latestFarmState.crops);
+				});
 
 				this.scale.on('resize', () => {
+					if (this.farmTitleTween) this.farmTitleTween.stop();
 					this.children.removeAll();
+					this.islandRenderObjects = [];
+					this.cropRenderObjects = [];
 					this.drawBackdrop();
-					this.drawTiles();
+					this.drawTiles(this.latestFarmState.level || 1);
 					this.farmer = this.createFarmer();
+					this.drawFarmTitle();
+					this.renderCrops(this.latestFarmState.crops);
 				});
 				this.connectToBot();
 			}
+			update(time, delta) {
+				for (const strip of this.waterStrips || []) {
+					strip.sprite.x -= strip.speed * delta / 1000;
+					if (strip.sprite.x + strip.width < 0) strip.sprite.x = this.scale.width + strip.width;
+					const pulse = 0.5 + 0.5 * Math.sin((time + strip.phase) * Math.PI * 2 / strip.period);
+					strip.sprite.setAlpha(strip.baseAlpha * (0.12 + pulse * 0.88));
+				}
+				const zoom = this.cameras.main.zoom || 1;
+				for (const idle of this.readyCropAnimations || []) {
+					if (!idle.sprite.active) continue;
+					const phase = (time + idle.phaseOffset) % 4000;
+					let xPixels = 0;
+					let yPixels = 0;
+					if (phase >= 80 && phase < 160) yPixels = -1;
+					else if (phase >= 160 && phase < 260) yPixels = -2;
+					else if (phase >= 260 && phase < 320) { xPixels = 1; yPixels = -2; }
+					else if (phase >= 320 && phase < 380) { xPixels = -1; yPixels = -2; }
+					else if (phase >= 380 && phase < 440) yPixels = -2;
+					else if (phase >= 440 && phase < 520) yPixels = -1;
+					idle.sprite.setPosition(idle.x + xPixels / zoom, idle.y + yPixels / zoom);
+				}
+			}
 			drawBackdrop() {
 				const { width, height } = this.scale;
-				this.cameras.main.setBackgroundColor('#85daff');
-				const waterPixels = this.add.graphics().setDepth(0);
-				const colors = [0x61bfe8, 0x70caef, 0xa8eaff, 0xb9efff, 0x79d2f2];
+				this.cameras.main.setBackgroundColor('#7fc7e4');
+				const colors = [0x9edbed, 0xa9e4ef, 0x8ed2e5, 0xb2e8f1];
 				const hash = (x, y, salt = 0) => {
 					let value = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(salt, 1442695041)) | 0;
 					value = Math.imul(value ^ (value >>> 13), 1274126177);
 					return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
 				};
+				const addWaterStrip = (x, y, stripWidth, stripHeight, color, baseAlpha, col, row, seed) => {
+					const sprite = this.add.rectangle(x, y, stripWidth, stripHeight, color, baseAlpha)
+						.setOrigin(0, 0).setDepth(1);
+					this.waterStrips.push({
+						sprite,
+						width: stripWidth,
+						baseAlpha,
+						speed: 4 + hash(col, row, seed) * 3.5,
+						phase: hash(col, row, seed + 1) * 7000,
+						period: 5500 + hash(col, row, seed + 2) * 3000
+					});
+				};
 
-				// Scatter irregular pixels over the water; their alpha fades near the edges.
-				for (let row = 0; row < Math.ceil(height / 18); row++) {
-					for (let col = 0; col < Math.ceil(width / 22); col++) {
-						if (hash(col, row) > 0.68) continue;
-						const x = col * 22 + Math.floor(hash(col, row, 1) * 16);
-						const y = row * 18 + Math.floor(hash(col, row, 2) * 12);
-						const edgeFade = Math.max(0, Math.min(x / 100, (width - x) / 100, y / 70, (height - y) / 70, 1));
-						if (!edgeFade) continue;
-						const color = colors[Math.floor(hash(col, row, 3) * colors.length)];
-						waterPixels.fillStyle(color, edgeFade * (0.3 + hash(col, row, 4) * 0.42));
-						waterPixels.fillRect(x, y, 3 + Math.floor(hash(col, row, 5) * 8), 2 + Math.floor(hash(col, row, 6) * 3));
-						if (hash(col, row, 7) > 0.42) {
-							waterPixels.fillStyle(0x55b4e1, edgeFade * 0.42);
-							waterPixels.fillRect(x + 4, y - 3, 3 + Math.floor(hash(col, row, 8) * 5), 2);
+				this.waterStrips = [];
+				// The reference water is a flat blue field with sparse, short wave pixels.
+				for (let row = 0; row < Math.ceil(height / 72); row++) {
+					for (let col = 0; col < Math.ceil(width / 104); col++) {
+						if (hash(col, row) > 0.32) continue;
+						const x = col * 104 + Math.floor(hash(col, row, 1) * 78);
+						const y = row * 72 + Math.floor(hash(col, row, 2) * 56);
+						const waveColor = colors[Math.floor(hash(col, row, 3) * colors.length)];
+						const waveAlpha = 0.55 + hash(col, row, 4) * 0.25;
+						const waveWidth = 10 + Math.floor(hash(col, row, 5) * 19);
+						const waveHeight = 2 + Math.floor(hash(col, row, 6) * 3);
+						addWaterStrip(x, y, waveWidth, waveHeight, waveColor, waveAlpha, col, row, 12);
+						if (hash(col, row, 7) > 0.7) {
+							const stripWidth = 4 + Math.floor(hash(col, row, 8) * 7);
+							addWaterStrip(x + 4, y - 4, stripWidth, 2, 0xb8eaf1, 0.72, col, row, 16);
 						}
 					}
 				}
 			}
-			drawTiles() {
-				const tileWidth = ISLAND_TILE_WIDTH;
-				const tileHeight = ISLAND_TILE_HEIGHT;
-				const originX = this.scale.width / 2;
-				const originY = this.scale.height / 2 + ISLAND_ORIGIN_Y_OFFSET;
-				// A 2x2 grid of four 2:1 tiles forms one compact diamond island.
-				const cells = [
-					{ gridX: 0, gridY: 0 },
-					{ gridX: 1, gridY: 0 },
-					{ gridX: 0, gridY: 1 },
-					{ gridX: 1, gridY: 1 }
-				];
-
-				const island = this.add.graphics().setDepth(2);
-				const depth = 14;
-				// Draw the two visible soil faces beneath the grass tops.
-				for (const cell of cells) {
-					const { x, y } = projectIsometricPosition(cell.gridX, cell.gridY, {
-						originX, originY, tileWidth, tileHeight
-					});
-					const right = new Phaser.Geom.Point(x + tileWidth / 2, y);
-					const bottom = new Phaser.Geom.Point(x, y + tileHeight / 2);
-					const left = new Phaser.Geom.Point(x - tileWidth / 2, y);
-					island.fillStyle(0x4b935f, 1);
-					island.fillPoints([right, bottom, new Phaser.Geom.Point(bottom.x, bottom.y + depth), new Phaser.Geom.Point(right.x, right.y + depth)], true);
-					island.fillStyle(0x5da96f, 1);
-					island.fillPoints([bottom, left, new Phaser.Geom.Point(left.x, left.y + depth), new Phaser.Geom.Point(bottom.x, bottom.y + depth)], true);
+			drawTiles(level = 1) {
+				for (const object of this.islandRenderObjects || []) object.destroy();
+				this.islandRenderObjects = [];
+				this.wetOverlaySprites = {};
+				this.renderedIslandLevel = level;
+				this.cameras.main.setZoom(ISLAND_ZOOM_BY_LEVEL[level] || 1);
+				const centerX = this.scale.width / 2;
+				const centerY = this.scale.height / 2;
+				if (level === 1) {
+					const island = this.add.image(centerX, centerY, 'island-1x1').setScale(3.2).setDepth(2);
+					this.islandRenderObjects.push(island);
+					this.drawWetOverlays(level);
+					return;
+				}
+				if (level === 2) {
+					const island = this.add.image(centerX, centerY, 'island-2x2').setScale(3.2).setDepth(2);
+					const signs = this.add.image(centerX, centerY, 'island-2x2-signs').setScale(3.2).setDepth(3);
+					this.islandRenderObjects.push(island, signs);
+					this.drawWetOverlays(level);
+					return;
 				}
 
-			// Grass tops are ordered back to front so near tiles sit over the soil.
-			cells.sort((a, b) => (a.gridX + a.gridY) - (b.gridX + b.gridY));
-			for (const cell of cells) {
-				const { x, y } = projectIsometricPosition(cell.gridX, cell.gridY, {
-					originX, originY, tileWidth, tileHeight
-				});
-				const g = this.add.graphics().setDepth(10 + cell.gridX + cell.gridY);
-				g.fillStyle(0x9cffac, 1);
-				g.fillPoints([
-					new Phaser.Geom.Point(x, y - tileHeight / 2),
-					new Phaser.Geom.Point(x + tileWidth / 2, y),
-					new Phaser.Geom.Point(x, y + tileHeight / 2),
-					new Phaser.Geom.Point(x - tileWidth / 2, y)
-				], true);
-				g.fillStyle(0xbaffc6, 1);
-				g.fillRect(Math.round(x - 10), Math.round(y - 3), 8, 3);
-				g.fillRect(Math.round(x + 10), Math.round(y + 2), 5, 3);
+				const width = ISLAND_TILE_WIDTH;
+				const height = ISLAND_TILE_HEIGHT;
+				const originY = centerY - (level - 1) * height / 2;
+				const top = new Phaser.Geom.Point(centerX, centerY - level * height / 2);
+				const right = new Phaser.Geom.Point(centerX + level * width / 2, centerY);
+				const bottom = new Phaser.Geom.Point(centerX, centerY + level * height / 2);
+				const left = new Phaser.Geom.Point(centerX - level * width / 2, centerY);
+				const island = this.add.graphics().setDepth(2);
+				island.fillStyle(0x75501b, 1);
+				island.fillPoints([right, bottom, new Phaser.Geom.Point(bottom.x, bottom.y + ISLAND_SIDE_DEPTH), new Phaser.Geom.Point(right.x, right.y + ISLAND_SIDE_DEPTH)], true);
+				island.fillStyle(0x82591f, 1);
+				island.fillPoints([bottom, left, new Phaser.Geom.Point(left.x, left.y + ISLAND_SIDE_DEPTH), new Phaser.Geom.Point(bottom.x, bottom.y + ISLAND_SIDE_DEPTH)], true);
+				island.fillStyle(0x38a32c, 1);
+				island.fillPoints([top, right, bottom, left], true);
+				this.islandRenderObjects.push(island);
+
+				// Each unlocked plot gets a soil diamond and a small sign around its edge.
+				for (let row = 0; row < level; row++) {
+					for (let col = 0; col < level; col++) {
+						const tile = row * level + col + 1;
+						const { x, y } = projectIsometricPosition(col, row, {
+							originX: centerX, originY, tileWidth: width, tileHeight: height
+						});
+						const plotWidth = width - 18;
+						const plotHeight = height - 10;
+						const plot = [
+							new Phaser.Geom.Point(x, y - plotHeight / 2),
+							new Phaser.Geom.Point(x + plotWidth / 2, y),
+							new Phaser.Geom.Point(x, y + plotHeight / 2),
+							new Phaser.Geom.Point(x - plotWidth / 2, y)
+						];
+						island.fillStyle(0x64420f, 1);
+						island.fillPoints(plot, true);
+						island.lineStyle(2, 0x4f350f, 0.8);
+						island.strokePoints(plot, true);
+						for (let fleck = 0; fleck < 8; fleck++) {
+							const px = x - 42 + ((tile * 19 + fleck * 37) % 84);
+							const py = y - 15 + ((tile * 11 + fleck * 13) % 30);
+							island.fillStyle(fleck % 3 ? 0x79531a : 0x53380e, 0.8);
+							island.fillRect(px, py, 5, 3);
+						}
+
+						const signX = x + 47;
+					const signY = y - 17;
+					const sign = this.add.graphics().setDepth(120 + (col + row) * 10);
+					sign.fillStyle(0x4b2b20, 1); sign.fillRect(signX - 14, signY - 11, 28, 21);
+					sign.fillStyle(0x9b5a35, 1); sign.fillRect(signX - 10, signY - 7, 20, 13);
+					sign.fillStyle(0x583624, 1); sign.fillRect(signX - 2, signY + 10, 4, 12);
+					this.islandRenderObjects.push(sign);
+					const signNumber = this.add.text(signX, signY, String(tile), {
+						fontFamily: 'monospace', fontSize: '12px', color: '#342015',
+						fontStyle: 'bold'
+					}).setOrigin(0.5).setDepth(121 + (col + row) * 10);
+					this.islandRenderObjects.push(signNumber);
+				}
+				}
+				this.drawWetOverlays(level);
 			}
+			drawWetOverlays(level) {
+				// Match the source-pixel scale used by the island sprites so overlay pixels
+				// stay aligned with the ground art at every farm level.
+				const overlayScale = level === 1 ? 3.0 : 3.2;
+			for (let tile = 1; tile <= level * level; tile++) {
+					const position = getTilePosition(this, tile, level);
+					if (!position) continue;
+					const onePixelLeft = level === 1 ? 1 / (this.cameras.main.zoom || 1) : 0;
+					const overlay = this.add.image(position.x - onePixelLeft, position.y, 'wet-overlay')
+						.setScale(overlayScale).setAlpha(0).setDepth(40 + position.gridX + position.gridY);
+					this.wetOverlaySprites[tile] = overlay;
+					this.islandRenderObjects.push(overlay);
+				}
+			}
+			updateWetOverlays(wetnessByTile = {}) {
+				for (const [tile, overlay] of Object.entries(this.wetOverlaySprites || {})) {
+					const wetness = Math.max(0, Math.min(15, Number(wetnessByTile?.[tile]) || 0));
+					this.tweens.killTweensOf(overlay);
+					this.tweens.add({
+						targets: overlay, alpha: wetness / 15 * 0.78,
+						duration: 260, ease: 'Sine.easeOut'
+					});
+				}
+			}
+			drawFarmTitle() {
+				if (this.farmTitleTween) this.farmTitleTween.stop();
+				if (this.farmTitle) this.farmTitle.destroy();
+				const textureKey = 'farm-title-pixel-texture';
+				if (this.textures.exists(textureKey)) this.textures.remove(textureKey);
+				const level = this.latestFarmState.level || 1;
+				const restY = this.scale.height / 2 - (60 + level * 50);
+				const title = this.latestFarmState.farmName || "Streamer's farm";
+				const fontSize = Math.max(16, Math.round(16 * this.scale.width / 1024));
+				const font = `${fontSize}px "Kiwi Soda"`;
+				const measureCanvas = document.createElement('canvas');
+				const measureContext = measureCanvas.getContext('2d');
+				measureContext.font = font;
+				const metrics = measureContext.measureText(title);
+				const padding = 4;
+				const canvas = document.createElement('canvas');
+				canvas.width = Math.ceil(metrics.width) + padding * 2;
+				canvas.height = fontSize + padding * 2;
+				const context = canvas.getContext('2d');
+				context.imageSmoothingEnabled = false;
+				context.font = font;
+				context.textAlign = 'center';
+				context.textBaseline = 'middle';
+				context.fillStyle = '#ffffff';
+				context.fillText(title, canvas.width / 2, canvas.height / 2);
+				// Threshold one shared glyph mask, then add a uniform one-pixel outline.
+				const glyphMask = context.getImageData(0, 0, canvas.width, canvas.height);
+				const pixelData = context.createImageData(canvas.width, canvas.height);
+				for (let y = 0; y < canvas.height; y++) {
+					for (let x = 0; x < canvas.width; x++) {
+						const sourceIndex = (y * canvas.width + x) * 4;
+						if (glyphMask.data[sourceIndex + 3] < 144) continue;
+						for (let offsetY = -1; offsetY <= 1; offsetY++) {
+							for (let offsetX = -1; offsetX <= 1; offsetX++) {
+								if (offsetX === 0 && offsetY === 0) continue;
+								const outlineX = x + offsetX;
+								const outlineY = y + offsetY;
+								if (outlineX < 0 || outlineX >= canvas.width || outlineY < 0 || outlineY >= canvas.height) continue;
+								const outlineIndex = (outlineY * canvas.width + outlineX) * 4;
+								if (glyphMask.data[outlineIndex + 3] >= 144) continue;
+								pixelData.data[outlineIndex] = 81;
+								pixelData.data[outlineIndex + 1] = 59;
+								pixelData.data[outlineIndex + 2] = 39;
+								pixelData.data[outlineIndex + 3] = 255;
+							}
+						}
+						pixelData.data[sourceIndex] = 255;
+						pixelData.data[sourceIndex + 1] = 255;
+						pixelData.data[sourceIndex + 2] = 255;
+						pixelData.data[sourceIndex + 3] = 255;
+					}
+				}
+				context.putImageData(pixelData, 0, 0);
+				const titleTexture = this.textures.addCanvas(textureKey, canvas);
+				titleTexture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+				const cameraZoom = this.cameras.main.zoom || 1;
+				this.farmTitle = this.add.image(this.scale.width / 2, restY, textureKey)
+					.setScale(1.6 / cameraZoom).setDepth(2000);
+				this.farmTitleTween = this.tweens.add({
+					targets: this.farmTitle, y: restY - 4,
+					duration: 1700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+				});
 			}
 			createFarmer() {
 				return addIsometricSprite(this, 'farmer', 0, 0, {
 					originX: this.scale.width / 2,
-					originY: this.scale.height / 2 + ISLAND_ORIGIN_Y_OFFSET,
+					originY: this.scale.height / 2,
 					tileWidth: ISLAND_TILE_WIDTH,
 					tileHeight: ISLAND_TILE_HEIGHT,
 					elevation: 0,
@@ -145,21 +433,259 @@
 				g.generateTexture('farmer', 16, 20);
 				g.destroy();
 			}
-			showHarvest() {
-				if (this.harvestTween) this.harvestTween.stop();
-				const position = projectIsometricPosition(0, 0, {
-					originX: this.scale.width / 2,
-					originY: this.scale.height / 2 + ISLAND_ORIGIN_Y_OFFSET,
-					tileWidth: ISLAND_TILE_WIDTH,
-					tileHeight: ISLAND_TILE_HEIGHT
-				});
-				this.farmer.setPosition(position.x, position.y).setAlpha(0).setScale(3.5);
-				this.harvestTween = this.tweens.add({
-					targets: this.farmer, alpha: 1, scale: 4, duration: 180,
-					onComplete: () => {
-						this.time.delayedCall(2600, () => {
-							this.tweens.add({ targets: this.farmer, alpha: 0, duration: 350 });
+			makeCropTextures() {
+				const rootColors = { potato: 0x9a7048, carrot: 0xf07b32, onion: 0xd7c7ec };
+			for (const [kind, rootColor] of Object.entries(rootColors)) {
+				const seed = this.make.graphics({ x: 0, y: 0, add: false });
+				seed.fillStyle(0x3e8a49); seed.fillRect(7, 5, 2, 5); seed.fillRect(4, 7, 3, 2); seed.fillRect(9, 6, 3, 2);
+				seed.fillStyle(rootColor); seed.fillRect(5, 11, 7, 4); seed.fillRect(7, 15, 3, 2);
+				seed.fillStyle(0x684a39); seed.fillRect(5, 14, 7, 1);
+				seed.generateTexture(`${kind}-seed`, 16, 20);
+				seed.destroy();
+
+				const grown = this.make.graphics({ x: 0, y: 0, add: false });
+				grown.fillStyle(0x27753d); grown.fillRect(7, 7, 3, 9);
+				grown.fillStyle(0x45a64d); grown.fillRect(2, 4, 6, 4); grown.fillRect(8, 2, 6, 5); grown.fillRect(4, 8, 5, 4);
+				grown.fillStyle(0x86d85e); grown.fillRect(4, 4, 3, 2); grown.fillRect(10, 3, 3, 2);
+				grown.fillStyle(rootColor); grown.fillRect(kind === 'carrot' ? 7 : 5, 14, kind === 'carrot' ? 3 : 7, 4);
+				grown.fillRect(kind === 'carrot' ? 8 : 7, 18, kind === 'carrot' ? 1 : 3, 2);
+				grown.generateTexture(`${kind}-grown`, 16, 20);
+				grown.destroy();
+			}
+			}
+			renderCrops(crops) {
+				if (this.cropGrowthTimer) this.cropGrowthTimer.remove(false);
+				for (const object of this.cropRenderObjects || []) object.destroy();
+				this.cropRenderObjects = [];
+				this.cropSprites = {};
+				this.readyCropAnimations = [];
+				let nextGrowthUpdateAt = Infinity;
+				for (const [tileText, crop] of Object.entries(crops || {})) {
+					const tile = Number(tileText);
+					const position = getTilePosition(this, tile);
+					if (!crop || !position) continue;
+					const { gridX, gridY } = position;
+					const now = Date.now();
+					const growthDuration = CROP_GROWTH_MS[crop.kind] || 30_000;
+					const wetness = Math.max(0, Math.min(15, Number(this.latestFarmState.wetness?.[tile]) || 0));
+					const growthMultiplier = 1 + 4 * wetness / 15;
+					const updatedAt = Number.isFinite(crop.growthUpdatedAt) ? crop.growthUpdatedAt : crop.plantedAt || now;
+					const storedProgress = Number.isFinite(crop.growthProgressMs) ? crop.growthProgressMs : 0;
+					const progress = Math.min(growthDuration, Math.max(0, storedProgress + Math.max(0, now - updatedAt) * growthMultiplier));
+					const isGrown = progress >= growthDuration || now >= crop.readyAt;
+					const carrotStage = isGrown ? 3 : progress >= growthDuration / 2 ? 2 : 1;
+					const textureKey = crop.kind === 'carrot'
+						? `carrot-stage-${carrotStage}`
+						: `${crop.kind}-${isGrown ? 'grown' : 'seed'}`;
+					const carrotSpread = crop.kind === 'carrot' && this.latestFarmState.level === 2
+						? ({
+							1: { x: 0, y: -5 }, // top: slightly up
+							2: { x: 5, y: -5 }, // right: slightly right and up
+							3: { x: -5, y: -5 }, // left: slightly left and up
+							4: { x: 0, y: 5 } // bottom: slightly down
+						}[tile] || { x: 0, y: 0 })
+						: { x: 0, y: 0 };
+					const screenPixelUp = 3 / (this.cameras.main.zoom || 1);
+					const cropOffset = crop.kind === 'carrot'
+						? { x: carrotSpread.x, y: carrotSpread.y - 4 - screenPixelUp }
+						: { x: 0, y: -screenPixelUp };
+					if (!isGrown) {
+						const nextMilestone = crop.kind === 'carrot' && progress < growthDuration / 2
+							? growthDuration / 2
+							: growthDuration;
+						nextGrowthUpdateAt = Math.min(nextGrowthUpdateAt, now + (nextMilestone - progress) / growthMultiplier);
+					}
+					const cropDepth = this.latestFarmState.level === 2 ? 2.5 : 100;
+					const sprite = addIsometricSprite(this, textureKey, gridX, gridY, {
+						originX: this.scale.width / 2 + cropOffset.x,
+						originY: this.scale.height / 2 - (this.latestFarmState.level - 1) * ISLAND_TILE_HEIGHT / 2 + cropOffset.y,
+						tileWidth: ISLAND_TILE_WIDTH,
+						tileHeight: ISLAND_TILE_HEIGHT,
+						elevation: crop.kind === 'carrot' ? 0 : 22,
+						origin: crop.kind === 'carrot' ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 },
+						scale: crop.kind === 'carrot' ? 3.0 : isGrown ? 3.5 : 2.8,
+						depthOffset: cropDepth - (gridX + gridY) * 100
+					});
+					this.cropRenderObjects.push(sprite);
+					this.cropSprites[tile] = sprite;
+					if (isGrown) {
+						this.readyCropAnimations.push({ sprite, x: sprite.x, y: sprite.y, phaseOffset: tile * 367 });
+					}
+					const label = this.add.text(position.x + cropOffset.x, position.y + cropOffset.y - 35, crop.ownerName || crop.ownerLogin || 'Farmer', {
+						fontFamily: 'monospace', fontSize: '11px', color: '#203c2b',
+						backgroundColor: '#eaffed', padding: { x: 3, y: 2 }
+					}).setOrigin(0.5, 1).setDepth(1000 + gridX + gridY).setVisible(false);
+					sprite.setData('ownerLogin', crop.ownerLogin || '');
+					sprite.setData('ownerName', crop.ownerName || crop.ownerLogin || 'Farmer');
+					sprite.setData('ownerTag', label);
+					this.cropRenderObjects.push(label);
+				}
+				if (nextGrowthUpdateAt < Infinity) {
+					this.cropGrowthTimer = this.time.delayedCall(Math.max(1, nextGrowthUpdateAt - Date.now() + 20), () => {
+						this.renderCrops(this.latestFarmState.crops);
+					});
+				}
+			}
+			// Keep planted-by labels hidden by default; harvest animations can call this.
+			showCropOwner(tile) {
+				const ownerTag = this.cropSprites?.[tile]?.getData('ownerTag');
+				if (ownerTag?.active) ownerTag.setVisible(true);
+				return ownerTag || null;
+			}
+			showHarvest(tile = 1, cropKind = '') {
+				const position = getTilePosition(this, tile) || getTilePosition(this, 1);
+				const cropSprite = this.cropSprites?.[tile];
+				const cropX = cropSprite?.x ?? position.x;
+				const cropY = cropSprite?.y ?? position.y;
+				const zoom = this.cameras.main.zoom || 1;
+				const existingSack = this.harvestSacks?.get(tile);
+				if (existingSack?.active) existingSack.destroy();
+
+				let harvestedPlant = null;
+				if (cropSprite?.active) {
+					harvestedPlant = this.add.image(cropX, cropY, cropSprite.texture.key)
+						.setOrigin(cropSprite.originX, cropSprite.originY)
+						.setScale(cropSprite.scaleX, cropSprite.scaleY)
+						.setAngle(cropSprite.angle).setAlpha(cropSprite.alpha).setDepth(1700);
+				}
+
+				const sackSize = this.textures.get('empty-sack').getSourceImage();
+				const sackScale = cropSprite?.active
+					? Math.max(cropSprite.displayWidth / sackSize.width, cropSprite.displayHeight / sackSize.height) * 1.15
+					: 4 / zoom;
+				const start = {
+					x: cropX + ISLAND_TILE_WIDTH * 1.05,
+					y: cropY - ISLAND_TILE_HEIGHT * 0.65
+				};
+				const exit = {
+					x: cropX - ISLAND_TILE_WIDTH * 1.05,
+					y: cropY - ISLAND_TILE_HEIGHT * 0.65
+				};
+				const sack = this.add.image(start.x, start.y, 'empty-sack')
+					.setOrigin(0.5, 0.5).setScale(sackScale).setDepth(1800);
+				this.harvestSacks ||= new Map();
+				this.harvestSacks.set(tile, sack);
+
+				let plantPoofed = false;
+				const poofPlant = () => {
+					if (plantPoofed) return;
+					plantPoofed = true;
+					const cropTint = { carrot: 0xf28b3a, potato: 0xc59a61, onion: 0xd7c7ec };
+					const puff = spawnHarvestPuff(this, cropX, cropY, {
+						count: 14, tint: cropTint[cropKind || this.latestFarmState.crops?.[tile]?.kind] || 0xbaffc6
+					});
+					puff.setDepth(1850);
+					if (harvestedPlant?.active) {
+						this.tweens.add({
+							targets: harvestedPlant, alpha: 0, scaleX: 0, scaleY: 0,
+							duration: 130, ease: 'Sine.easeIn', onComplete: () => harvestedPlant.destroy()
 						});
+					}
+				};
+
+				const cover = { x: cropX, y: cropY };
+				const turnAt = 0.44;
+				const upperRight = [
+					start,
+					{ x: cropX + ISLAND_TILE_WIDTH * 0.65, y: cropY - ISLAND_TILE_HEIGHT * 0.35 },
+					{ x: cropX + ISLAND_TILE_WIDTH * 0.35, y: cropY - ISLAND_TILE_HEIGHT * 0.25 },
+					cover
+				];
+				const upperLeft = [
+					cover,
+					{
+						x: cover.x + (cover.x - upperRight[2].x) * (1 - turnAt) / turnAt,
+						y: cover.y + (cover.y - upperRight[2].y) * (1 - turnAt) / turnAt
+					},
+					{ x: exit.x, y: exit.y + ISLAND_TILE_HEIGHT * 0.25 },
+					exit
+				];
+				const updateAlongCurve = (points, t) => {
+					const inverse = 1 - t;
+					const x = inverse ** 3 * points[0].x + 3 * inverse ** 2 * t * points[1].x + 3 * inverse * t ** 2 * points[2].x + t ** 3 * points[3].x;
+					const y = inverse ** 3 * points[0].y + 3 * inverse ** 2 * t * points[1].y + 3 * inverse * t ** 2 * points[2].y + t ** 3 * points[3].y;
+					const tangentX = 3 * inverse ** 2 * (points[1].x - points[0].x) + 6 * inverse * t * (points[2].x - points[1].x) + 3 * t ** 2 * (points[3].x - points[2].x);
+					const tangentY = 3 * inverse ** 2 * (points[1].y - points[0].y) + 6 * inverse * t * (points[2].y - points[1].y) + 3 * t ** 2 * (points[3].y - points[2].y);
+					sack.setPosition(x, y).setAngle(Phaser.Math.RadToDeg(Math.atan2(tangentX, -tangentY)));
+				};
+				const swoopProgress = { value: 0 };
+				this.tweens.add({
+					targets: swoopProgress, value: 1, duration: 1240, ease: 'Sine.easeInOut',
+					onUpdate: () => {
+						if (!sack.active) return;
+						const progress = swoopProgress.value;
+						if (progress < turnAt) updateAlongCurve(upperRight, progress / turnAt);
+						else updateAlongCurve(upperLeft, (progress - turnAt) / (1 - turnAt));
+						if (progress >= turnAt * 0.82) poofPlant();
+					},
+					onComplete: () => {
+						if (!sack.active) return;
+						this.tweens.add({
+							targets: sack, y: exit.y - ISLAND_TILE_HEIGHT * 1.25, angle: 0, alpha: 0,
+							duration: 400, ease: 'Sine.easeIn',
+							onComplete: () => {
+								if (!plantPoofed) poofPlant();
+								sack.destroy();
+								this.harvestSacks.delete(tile);
+							}
+						});
+					}
+				});
+			}
+			showWatering(tile = 1) {
+				const position = getTilePosition(this, tile);
+				if (!position) return;
+				const zoom = this.cameras.main.zoom || 1;
+				const spread = Math.max(28, ISLAND_TILE_WIDTH * 0.38);
+				const x = Phaser.Math.Clamp(position.x + Phaser.Math.Between(-spread, spread), 18, this.scale.width - 18);
+				const y = position.y - 28;
+				const can = this.add.image(x, y, 'watering-can')
+					.setOrigin(0.5, 0.75).setScale(3.2 / zoom).setAngle(8).setAlpha(0).setDepth(1800);
+				this.tweens.add({
+					targets: can, alpha: 1, angle: -68, duration: 240, ease: 'Sine.easeInOut',
+					onComplete: () => {
+						const dropColors = [0x51b9f4, 0x8cddff, 0xd6f5ff];
+						const emitDropBurst = () => {
+							for (let index = 0; index < 6; index++) {
+								const drop = this.add.rectangle(
+									x + Phaser.Math.Between(-9, 9), y + 7 + Phaser.Math.Between(-2, 3),
+									2 + (index % 2), 3, dropColors[index % dropColors.length], 1
+								).setDepth(1801);
+								this.tweens.add({
+									targets: drop,
+									x: drop.x + Phaser.Math.Between(-12, 12),
+									y: drop.y + Phaser.Math.Between(8, 18),
+									alpha: 0, duration: 300 + index * 18, ease: 'Sine.easeOut',
+									onComplete: () => drop.destroy()
+								});
+							}
+						};
+						emitDropBurst();
+						this.time.delayedCall(220, emitDropBurst);
+						this.tweens.add({
+							targets: can, angle: 0, alpha: 0, duration: 380, delay: 850, ease: 'Sine.easeOut',
+							onComplete: () => can.destroy()
+						});
+					}
+				});
+			}
+			showHarvestProgress(message) {
+				const position = getTilePosition(this, message.tile, this.latestFarmState.level || 1, 58);
+				if (!position) return;
+				this.progressLabels ||= {};
+				let label = this.progressLabels[message.tile];
+				if (!label || !label.active) {
+					label = this.add.text(position.x, position.y, '', {
+						fontFamily: 'monospace', fontSize: '13px', color: '#ffffff',
+						backgroundColor: '#315d35', padding: { x: 5, y: 3 }
+					}).setOrigin(0.5).setDepth(1200);
+					this.progressLabels[message.tile] = label;
+				}
+				label.setText(`${message.votes}/${message.required} harvest votes`);
+				this.time.delayedCall(2500, () => {
+					if (this.progressLabels[message.tile] === label) {
+						label.destroy();
+						delete this.progressLabels[message.tile];
 					}
 				});
 			}
@@ -168,8 +694,25 @@
 				socket.addEventListener('message', (event) => {
 					try {
 						const message = JSON.parse(event.data);
-						if (message.type === 'command.harvest') {
-							this.showHarvest();
+						if (message.type === 'farm.state') {
+							document.getElementById('global-balance').textContent = `$${Number(message.bank || 0).toLocaleString()}`;
+							const farmState = this.debugIslandLevel ? { ...message, level: this.debugIslandLevel } : message;
+							document.getElementById('debug-island-size').textContent = `${farmState.level}x${farmState.level}`;
+							const titleChanged = farmState.farmName !== this.latestFarmState.farmName;
+							this.latestFarmState = farmState;
+							const levelChanged = farmState.level !== this.renderedIslandLevel;
+							if (levelChanged) this.drawTiles(farmState.level);
+							this.updateWetOverlays(farmState.wetness);
+							if (levelChanged || titleChanged) this.drawFarmTitle();
+							this.renderCrops(farmState.crops);
+						} else if (message.type === 'farm.harvest.progress') {
+							this.showHarvestProgress(message);
+						} else if (message.type === 'farm.harvested') {
+							this.showHarvest(message.tile, message.crop);
+						} else if (message.type === 'farm.watered') {
+							this.showWatering(message.tile);
+						} else if (message.type === 'command.harvest') {
+							this.showHarvest(1);
 						}
 					} catch (error) {
 						console.warn('Ignored invalid bot message:', error);
@@ -182,12 +725,40 @@
 			}
 		}
 
+		function pixelateCommandEmojis() {
+			for (const original of document.querySelectorAll('#farm-menu .plant-emoji')) {
+				const pixelCanvas = document.createElement('canvas');
+				pixelCanvas.width = 8;
+				pixelCanvas.height = 8;
+				const context = pixelCanvas.getContext('2d');
+				if (!context) continue;
+				context.imageSmoothingEnabled = false;
+				context.font = '8px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+				context.textAlign = 'center';
+				context.textBaseline = 'middle';
+				context.fillText(original.textContent.trim(), 4, 4);
+				pixelCanvas.className = original.className;
+				pixelCanvas.setAttribute('aria-hidden', 'true');
+				original.replaceWith(pixelCanvas);
+			}
+		}
+
+		try {
+			await Promise.all([
+				document.fonts.load('16px "Pixelify Sans"'),
+				document.fonts.load('16px "Kiwi Soda"')
+			]);
+		} catch (error) {
+			console.warn('A game font did not load; using its fallback.', error);
+		}
+		pixelateCommandEmojis();
+
 		new Phaser.Game({
 			type: Phaser.CANVAS,
 			parent: 'game',
 			width: window.innerWidth,
 			height: window.innerHeight,
-			backgroundColor: '#85daff',
+			backgroundColor: '#7fc7e4',
 			pixelArt: true,
 			render: { antialias: false, pixelArt: true, roundPixels: true },
 			scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
