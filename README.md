@@ -61,9 +61,9 @@ The bot loads `.env.local` and `.env` from the current working directory; values
 | `OAUTH_TOKEN` | Bot account user access token |
 | `BOT_USER_ID` | Numeric Twitch ID for the bot account |
 | `CHAT_CHANNEL_USER_ID` | Numeric Twitch ID for the channel owner |
-| `OPENAI_API_KEY` | Optional key for generating special crop modifier words and tint colors; leave blank to use built-in presets |
+| `OPENAI_API_KEY` | <b>Optional</b> key for generating special crop modifier words and tint colors; leave blank to use built-in presets |
 
-With an OpenAI key, the bot uses `gpt-4o-mini` to generate a one-word modifier and a hex color for a special crop. Without a key, it selects from the local Cosmic, Glitch, Inferno, and Radioactive presets. Special modifiers are only generated after a crop rolls shiny and passes a second 30% chance. The default shiny chance is 10%; a special modified shiny crop has a 5× modifier value multiplier in addition to the 5× shiny multiplier.
+With an OpenAI key, the bot uses `gpt-4o-mini` to generate a one-word modifier and a hex color for a special crop. Without a key, it selects from the local presets. Special modifiers are only generated after a crop rolls shiny and passes a second 30% chance. 
 
 ## Chat commands
 
@@ -79,7 +79,7 @@ Harvests require unique chatter votes based on active chatters from the precedin
 
 All crops average about 0.2 kg; heavier crops are worth more. Shiny crops are worth 5× their normal weight-adjusted value. Rare special modifiers add another 5× and appear with a generated or preset tint. A 500-bit Cheer instantly grows all planted crops when the bot has the optional `bits:read` scope.
 
-The farm starts at 1×1 and expands to 2×2 after 10 successful harvests. It currently caps at 2×2; 3×3 expansion is disabled.
+The farm starts at 1×1 and expands to 2×2 after 10 successful harvests. It currently caps at 2×2; 3×3+ is planned for the future.
 
 ## Mock-chat terminal controls
 
