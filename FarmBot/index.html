@@ -6,86 +6,195 @@
 	<title>FarmBot Overlay</title>
 	<style>
 		@font-face {
-			font-family: 'Kiwi Soda';
-			src: url('/assets/KiwiSoda.ttf') format('truetype');
-			font-display: swap;
-		}
-		@font-face {
 			font-family: 'Pixelify Sans';
 			src: url('/assets/PixelifySans-VariableFont_wght.ttf') format('truetype');
 			font-style: normal;
 			font-weight: 400 700;
 			font-display: swap;
 		}
-		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #7fc7e4; }
+		:root { --composition-shift: 40px; --composition-shift-up: -40px; }
+		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
 		body { image-rendering: pixelated; }
-		#game { width: 100%; height: 100%; }
-		canvas { display: block; image-rendering: pixelated; }
+		#ocean-background { position: fixed; z-index: 0; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+		#game { position: relative; z-index: 1; width: 100%; height: 100%; background: transparent; }
+		canvas { display: block; image-rendering: pixelated; background: transparent; }
+		#game canvas { transform: translateY(var(--composition-shift-up)); }
 		#farm-menu {
 			position: fixed; z-index: 5; inset: 0;
-			color: #ffdb55; font-family: 'Pixelify Sans', monospace; font-weight: 700;
+			color: #ffe7a1; font-family: 'Pixelify Sans', monospace; font-weight: 700;
 			image-rendering: pixelated; pointer-events: none; user-select: none;
 			--balance-bottom: clamp(64px, 17vh, 180px);
 			--command-center-offset: clamp(25px, 4.23vw, 43px);
 		}
 		#farm-menu .balance-group {
-			position: absolute; left: 32%; bottom: var(--balance-bottom); transform: translateX(-50%);
+			position: absolute; left: 32%; bottom: calc(var(--balance-bottom) + var(--composition-shift)); transform: translateX(-50%);
 			display: flex; align-items: center; gap: 8px; white-space: nowrap;
 		}
 		#farm-menu .balance-label, #farm-menu #global-balance, #farm-menu .command-text {
-			font-size: clamp(15px, 2.45vw, 25px); line-height: 1.15;
+			font-size: calc(clamp(18px, 2.8vw, 29px) + 5px); line-height: 1.15;
 			-webkit-text-stroke: 2px #050606; paint-order: stroke fill;
 			text-shadow: 2px 2px #050606;
 		}
 		#farm-menu #global-balance { color: #fff4d7; }
 		#farm-menu .coin-icon {
-			display: inline-block; width: clamp(15px, 2.45vw, 25px); height: clamp(15px, 2.45vw, 25px); flex: none; object-fit: contain; margin-left: -4px;
+			display: inline-block; width: clamp(18px, 2.8vw, 28px); height: clamp(18px, 2.8vw, 28px); flex: none; object-fit: contain; margin-left: -4px;
 			image-rendering: pixelated; vertical-align: middle;
 		}
 		#farm-menu .commands-group {
-			position: absolute; left: 68%; bottom: calc(var(--balance-bottom) - var(--command-center-offset));
+			position: absolute; left: 68%; bottom: calc(var(--balance-bottom) - var(--command-center-offset) + var(--composition-shift));
 			transform: translateX(-50%); display: grid; justify-items: center; gap: 0;
 		}
 		#farm-menu .command-row { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 		#farm-menu .command-text { color: #fff4d7; }
-		#farm-menu .command-gold { color: #ffd94a; }
+		#farm-menu .command-gold { color: #ffe7a1; }
 		#farm-menu .plant-emoji {
-			display: inline-block; width: clamp(15px, 2.45vw, 24px); height: clamp(15px, 2.45vw, 24px); flex: none;
+			display: inline-block; width: clamp(27px, 3.6vw, 36px); height: clamp(27px, 3.6vw, 36px); flex: none;
+			object-fit: contain; image-rendering: pixelated;
+			filter: drop-shadow(2px 2px 0 #050606); transform: translate(6px, -3px);
+		}
+		#harvest-reward-stage {
+			position: fixed; z-index: 6; inset: 0; display: none; overflow: hidden;
+			pointer-events: none; user-select: none; font-family: 'Pixelify Sans', monospace;
+		}
+		#harvest-reward-stage.active { display: block; }
+		#harvest-reward-stage .reward-backdrop {
+			position: absolute; inset: 0; background: rgba(8, 20, 27, 0); opacity: 0;
+			backdrop-filter: blur(0); transition: opacity 260ms ease, background-color 260ms ease, backdrop-filter 260ms ease;
+		}
+		#harvest-reward-stage.reward-active .reward-backdrop {
+			background: rgba(8, 20, 27, 0.14); opacity: 1; backdrop-filter: blur(2px);
+		}
+		#harvest-reward-stage .reward-bag-window {
+			position: absolute; z-index: 1; left: 50%;
+			width: clamp(260px, 27vw, 380px); height: clamp(260px, 27vw, 380px); overflow: visible;
+			bottom: calc(clamp(8px, 1.5vh, 14px) + clamp(132px, 20vh, 160px) - clamp(18px, 2.4vh, 26px) - clamp(260px, 27vw, 380px) + var(--composition-shift));
+			transform: translate(-50%, 110%); transition: transform 430ms cubic-bezier(0.2, 0.7, 0.25, 1);
 			image-rendering: pixelated;
-			filter: drop-shadow(1px 0 0 #050606) drop-shadow(-1px 0 0 #050606)
-				drop-shadow(0 1px 0 #050606) drop-shadow(0 -1px 0 #050606)
-				drop-shadow(1px 1px 0 #050606);
 		}
-		#debug-island {
-			position: fixed; z-index: 7; left: 8px; top: 50%; transform: translateY(-50%);
-			display: grid; gap: 2px; justify-items: center; min-width: 52px; padding: 5px 4px;
-			color: #fff1c7; background: #624633; border: 2px solid #211a16;
-			box-shadow: 2px 2px 0 #211a16; font: 10px/1.1 'Pixelify Sans', monospace;
-			cursor: pointer; image-rendering: pixelated;
+		#harvest-reward-stage.bag-up .reward-bag-window { transform: translate(-50%, 0); }
+		#harvest-reward-stage .reward-bag-tip {
+			position: absolute; top: 0; left: 50%; display: block; width: 100%; height: auto;
+			transform: translateX(-50%); image-rendering: pixelated;
 		}
-		#debug-island strong { color: #ffe178; font-size: 14px; }
-		#debug-island:hover { background: #79553c; }
-		#debug-island:focus-visible { outline: 2px solid #fff1c7; outline-offset: 2px; }
+		#harvest-reward-stage .reward-carrot {
+			position: absolute; z-index: 2; left: 50%; top: calc(35% - var(--composition-shift)); display: block;
+			width: clamp(300px, 33vw, 468px); height: auto; object-fit: contain;
+			opacity: 0; transform: translate(-50%, 42px) scale(0.45);
+			transition: opacity 170ms ease, transform 400ms cubic-bezier(0.16, 0.72, 0.28, 1);
+			image-rendering: pixelated; filter: drop-shadow(5px 6px 0 rgba(15, 20, 15, 0.78));
+		}
+		#harvest-reward-stage .reward-carrot.shiny {
+			filter: brightness(1.12)
+				drop-shadow(0 0 5px rgba(255, 225, 80, 0.9))
+				drop-shadow(0 0 12px rgba(255, 204, 48, 0.62))
+				drop-shadow(5px 6px 0 rgba(15, 20, 15, 0.78));
+		}
+		#harvest-reward-stage .reward-carrot.shiny.special {
+			filter: brightness(1.12)
+				drop-shadow(0 0 5px rgba(255, 225, 80, 0.9))
+				drop-shadow(0 0 12px rgba(255, 204, 48, 0.62))
+				drop-shadow(5px 6px 0 rgba(15, 20, 15, 0.78));
+		}
+		#harvest-reward-stage .reward-carrot.visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+		#harvest-reward-stage .reward-weight {
+			position: absolute; z-index: 2; left: 50%; top: calc(35% + clamp(155px, 16vw, 230px) - var(--composition-shift));
+			display: flex; align-items: center; gap: 14px;
+			transform: translate(-50%, 8px); opacity: 0; white-space: nowrap;
+			color: #d8d8d8; font-size: clamp(26px, 3.3vw, 40px); font-weight: 700;
+			-webkit-text-stroke: 2px #050606; paint-order: stroke fill;
+			text-shadow: 2px 2px #171311, -1px -1px #171311;
+			filter: drop-shadow(2px 3px 0 #35291c);
+			transition: opacity 180ms ease, transform 180ms ease;
+		}
+		#harvest-reward-stage .reward-weight.visible { opacity: 1; transform: translate(-50%, 0); }
+		#harvest-reward-stage .reward-shiny-label {
+			position: absolute; z-index: 3; left: 50%;
+			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(42px, 5vw, 58px) - var(--composition-shift));
+			transform: translate(-50%, 5px) scale(0.8); opacity: 0; white-space: nowrap;
+			color: #ffe36a; font: 700 clamp(22px, 2.8vw, 34px)/1 'Pixelify Sans', monospace;
+			-webkit-text-stroke: 1.5px #171311; paint-order: stroke fill;
+			text-shadow: 2px 2px #171311; filter: drop-shadow(2px 2px 0 #35291c);
+			pointer-events: none;
+		}
+		#harvest-reward-stage .reward-modifier-label {
+			position: absolute; z-index: 3; left: 50%;
+			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(78px, 8vw, 94px) - var(--composition-shift));
+			transform: translate(-50%, 5px) scale(0.8); opacity: 0; white-space: nowrap;
+			color: #ffd28b; font: 700 clamp(22px, 2.8vw, 34px)/1 'Pixelify Sans', monospace;
+			-webkit-text-stroke: 1.5px #171311; paint-order: stroke fill;
+			text-shadow: 2px 2px #171311; filter: drop-shadow(2px 2px 0 #35291c);
+			pointer-events: none;
+		}
+		#harvest-reward-stage .reward-mutant-label {
+			position: absolute; z-index: 3; left: 50%;
+			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(112px, 11vw, 132px) - var(--composition-shift));
+			transform: translate(-50%, 5px) scale(0.8); opacity: 0; white-space: nowrap;
+			color: #d7ffb0; font: 700 clamp(22px, 2.8vw, 34px)/1 'Pixelify Sans', monospace;
+			-webkit-text-stroke: 1.5px #171311; paint-order: stroke fill;
+			text-shadow: 2px 2px #171311; filter: drop-shadow(2px 2px 0 #35291c);
+			pointer-events: none;
+		}
+		#harvest-reward-stage .reward-shiny-label.visible,
+		#harvest-reward-stage .reward-modifier-label.visible,
+		#harvest-reward-stage .reward-mutant-label.visible { animation: shiny-label-pop 260ms cubic-bezier(0.18, 0.85, 0.3, 1.2) forwards; }
+		@keyframes shiny-label-pop {
+			0% { opacity: 0; transform: translate(-50%, 7px) scale(0.72); }
+			75% { opacity: 1; transform: translate(-50%, -2px) scale(1.08); }
+			100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+		}
+		#harvest-reward-stage .reward-payout {
+			position: absolute; z-index: 4; left: 50%; top: calc(35% - var(--composition-shift));
+			transform: translate(-50%, -50%); opacity: 0; white-space: nowrap;
+			color: #ffdc45; font: 700 clamp(30px, 4vw, 48px)/1 'Pixelify Sans', monospace;
+			-webkit-text-stroke: 2px #171311; paint-order: stroke fill;
+			text-shadow: 3px 3px #171311; filter: drop-shadow(2px 3px 0 #35291c);
+			pointer-events: none;
+		}
+		#harvest-reward-stage .reward-payout.visible { animation: payout-pop-fade 1250ms ease-out forwards; }
+		@keyframes payout-pop-fade {
+			0% { opacity: 0; transform: translate(-50%, -50%) scale(0.75); }
+			12% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+			22% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+			100% { opacity: 0; transform: translate(-50%, -62%) scale(0.96); }
+		}
+		#harvest-reward-stage .reward-coins { position: absolute; z-index: 3; inset: 0; }
+		#harvest-reward-stage .reward-coin {
+			position: absolute; display: block; width: clamp(18px, 2.2vw, 28px); height: auto;
+			image-rendering: pixelated; filter: drop-shadow(1px 1px 0 #49371a);
+		}
 		@media (max-width: 600px) {
 			#farm-menu { --balance-bottom: clamp(60px, 17vh, 110px); --command-center-offset: clamp(19px, 5.5vw, 28px); }
-			#debug-island { left: 4px; min-width: 44px; padding: 4px 3px; font-size: 9px; }
-			#debug-island strong { font-size: 12px; }
-			#farm-menu .balance-group { left: 32%; }
-			#farm-menu .commands-group { left: 68%; }
+			#farm-menu .balance-group { left: 25%; }
+			#farm-menu .commands-group { left: 75%; }
 			#farm-menu .balance-group { gap: 3px; }
-			#farm-menu .balance-label, #farm-menu #global-balance, #farm-menu .command-text { font-size: clamp(11px, 3.2vw, 16px); }
-			#farm-menu .coin-icon { width: clamp(11px, 3.2vw, 16px); height: clamp(11px, 3.2vw, 16px); margin-left: -2px; }
+			#farm-menu .balance-label, #farm-menu #global-balance, #farm-menu .command-text { font-size: calc(clamp(16px, 4.2vw, 18px) + 5px); }
+			#farm-menu .coin-icon { width: clamp(13px, 3.6vw, 18px); height: clamp(13px, 3.6vw, 18px); margin-left: -2px; }
 			#farm-menu .command-row { gap: 2px; }
-			#farm-menu .plant-emoji { width: clamp(11px, 3.2vw, 16px); height: clamp(11px, 3.2vw, 16px); }
+			#farm-menu .plant-emoji { width: clamp(22px, 4.4vw, 27px); height: clamp(22px, 4.4vw, 27px); }
+		}
+		@media (max-height: 500px) {
+			#farm-menu { --balance-bottom: 42px; --command-center-offset: clamp(38px, 7.7vw, 46px); }
+		}
+		@media (min-width: 701px) and (max-width: 1400px) and (min-height: 501px) and (max-height: 850px) {
+			#farm-menu { --balance-bottom: clamp(64px, 10.7vh, 84px); }
 		}
 	</style>
 	<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
 </head>
 <body>
+	<canvas id="ocean-background" aria-hidden="true"></canvas>
 	<div id="game"></div>
-	<button id="debug-island" type="button" aria-label="Cycle debug island size" title="Cycle island preview size">
-		<span>DEBUG</span><strong id="debug-island-size">1x1</strong>
-	</button>
+	<div id="harvest-reward-stage" aria-hidden="true">
+		<div class="reward-backdrop"></div>
+		<div class="reward-bag-window"><img class="reward-bag-tip" src="/assets/emptySack.png" alt=""></div>
+		<canvas class="reward-carrot" aria-hidden="true"></canvas>
+		<div class="reward-weight">Weight: &lt;weight&gt;</div>
+		<div class="reward-shiny-label" aria-hidden="true">SHINY</div>
+		<div class="reward-modifier-label" aria-hidden="true"></div>
+		<div class="reward-mutant-label" aria-hidden="true"></div>
+		<div class="reward-payout" aria-hidden="true"></div>
+		<div class="reward-coins"></div>
+	</div>
 	<aside id="farm-menu" aria-label="Farm guide">
 		<div class="balance-group">
 			<span class="balance-label">BALANCE:</span>
@@ -93,23 +202,191 @@
 			<img class="coin-icon" src="/assets/coin.png" alt="" aria-hidden="true">
 		</div>
 		<section class="commands-group" aria-label="Commands">
-			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text"><span class="command-gold">!harvest</span> #</span></div>
-			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text"><span class="command-gold">!water</span> #</span></div>
-			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text command-gold">!shop</span></div>
-			<div class="command-row"><span class="plant-emoji" aria-hidden="true">&#x1F331;</span><span class="command-text"><span class="command-gold">!buy</span> &lt;plant&gt; #</span></div>
+			<div class="command-row"><img class="plant-emoji" src="/assets/plantemoji.png" alt="" aria-hidden="true"><span class="command-text"><span class="command-gold">!harvest</span> #</span></div>
+			<div class="command-row"><img class="plant-emoji" src="/assets/plantemoji.png" alt="" aria-hidden="true"><span class="command-text"><span class="command-gold">!water</span> #</span></div>
+			<div class="command-row"><img class="plant-emoji" src="/assets/plantemoji.png" alt="" aria-hidden="true"><span class="command-text command-gold">!shop</span></div>
+			<div class="command-row"><img class="plant-emoji" src="/assets/plantemoji.png" alt="" aria-hidden="true"><span class="command-text"><span class="command-gold">!plant</span> &lt;type&gt; #</span></div>
 		</section>
 	</aside>
 	<script type="module">
 		import { addIsometricSprite, projectIsometricPosition, spawnHarvestPuff } from './utilities.js';
 
+		class OceanBackdrop {
+			constructor(canvas) {
+				this.canvas = canvas;
+				this.context = canvas.getContext('2d', { alpha: true });
+				this.maskCanvas = document.createElement('canvas');
+				this.maskContext = this.maskCanvas.getContext('2d', { willReadFrequently: true });
+				this.strips = [];
+				this.resize();
+				window.addEventListener('resize', () => this.resize());
+				this.previousTime = performance.now();
+				requestAnimationFrame((time) => this.draw(time));
+			}
+			hash(x, y, salt = 0) {
+				let value = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(salt, 1442695041)) | 0;
+				value = Math.imul(value ^ (value >>> 13), 1274126177);
+				return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
+			}
+			resize() {
+				const width = Math.max(1, Math.round(window.innerWidth));
+				const height = Math.max(1, Math.round(window.innerHeight));
+				if (this.canvas.width === width && this.canvas.height === height
+					&& this.maskCanvas.width === width && this.maskCanvas.height === height) return;
+				this.canvas.width = width; this.canvas.height = height;
+				this.maskCanvas.width = width; this.maskCanvas.height = height;
+				this.createEdgeMask();
+				this.createWaterStrips(width, height);
+			}
+			createWaterStrips(width, height) {
+				this.strips = [];
+				const colors = ['#9edbed', '#a9e4ef', '#8ed2e5', '#b2e8f1'];
+				const add = (x, y, stripWidth, stripHeight, color, baseAlpha, col, row, seed) => {
+					this.strips.push({ x, y, width: stripWidth, height: stripHeight, color, baseAlpha,
+						speed: 4 + this.hash(col, row, seed) * 3.5,
+						phase: this.hash(col, row, seed + 1) * 7000,
+						period: 5500 + this.hash(col, row, seed + 2) * 3000 });
+				};
+			for (let row = 0; row < Math.ceil(height / 72); row++) for (let col = 0; col < Math.ceil(width / 104); col++) {
+				if (this.hash(col, row) > 0.32) continue;
+				const x = col * 104 + Math.floor(this.hash(col, row, 1) * 78);
+				const y = row * 72 + Math.floor(this.hash(col, row, 2) * 56);
+				const color = colors[Math.floor(this.hash(col, row, 3) * colors.length)];
+				add(x, y, 10 + Math.floor(this.hash(col, row, 5) * 19), 2 + Math.floor(this.hash(col, row, 6) * 3), color,
+					0.55 + this.hash(col, row, 4) * 0.25, col, row, 12);
+				if (this.hash(col, row, 7) > 0.7) add(x + 4, y - 4,
+					4 + Math.floor(this.hash(col, row, 8) * 7), 2, '#b8eaf1', 0.72, col, row, 16);
+			}
+			}
+			createEdgeMask() {
+				if (!this.maskContext || !this.maskCanvas.width || !this.maskCanvas.height) return;
+				const width = this.maskCanvas.width, height = this.maskCanvas.height;
+				const centerX = width / 2;
+				const centerY = height / 2;
+				const squareSize = Math.max(4, Math.min(6, Math.round(Math.min(width, height) / 100)));
+				const edgeInset = Math.max(squareSize * 2, Math.min(width, height) * 0.05);
+				const halfWidth = Math.max(squareSize * 2, width / 2 - edgeInset);
+				const halfHeight = Math.max(squareSize * 2, height / 2 - edgeInset);
+				const cornerRadius = Math.min(halfWidth, halfHeight, Math.min(width, height) * 0.24);
+				const fadeWidth = Math.max(squareSize * 5, Math.min(width, height) * 0.05);
+				const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+				this.maskContext.clearRect(0, 0, width, height);
+				this.maskContext.fillStyle = '#fff';
+				for (let y = 0; y < height; y += squareSize) for (let x = 0; x < width; x += squareSize) {
+					const cellX = Math.floor(x / squareSize), cellY = Math.floor(y / squareSize);
+					const dx = x + squareSize / 2 - centerX, dy = y + squareSize / 2 - centerY;
+					const qx = Math.abs(dx) - (halfWidth - cornerRadius);
+					const qy = Math.abs(dy) - (halfHeight - cornerRadius);
+					const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
+					const inside = Math.min(Math.max(qx, qy), 0);
+					const edgeDistance = outside + inside - cornerRadius;
+					if (edgeDistance > 0) continue;
+					if (edgeDistance > -fadeWidth) {
+						const fade = -edgeDistance / fadeWidth;
+						const threshold = (bayer[(cellY % 4) * 4 + (cellX % 4)] + 0.5) / 16;
+						if (fade < threshold) continue;
+					}
+					this.maskContext.fillRect(x, y, squareSize, squareSize);
+				}
+			}
+			draw(time) {
+				const delta = Math.min(50, Math.max(0, time - this.previousTime));
+				this.previousTime = time;
+				const context = this.context;
+				context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+				context.fillStyle = '#7fc7e4';
+				context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+				for (const strip of this.strips) {
+					strip.x -= strip.speed * delta / 1000;
+					if (strip.x + strip.width < 0) strip.x = this.canvas.width + strip.width;
+					const pulse = 0.5 + 0.5 * Math.sin((time + strip.phase) * Math.PI * 2 / strip.period);
+					context.globalAlpha = strip.baseAlpha * (0.12 + pulse * 0.88);
+					context.fillStyle = strip.color;
+					context.fillRect(Math.round(strip.x), strip.y, strip.width, strip.height);
+				}
+				context.globalAlpha = 1;
+				context.globalCompositeOperation = 'destination-in';
+				context.drawImage(this.maskCanvas, 0, 0);
+				context.globalCompositeOperation = 'source-over';
+				requestAnimationFrame((nextTime) => this.draw(nextTime));
+			}
+		}
+
 		const ISLAND_TILE_WIDTH = 160;
 		const ISLAND_TILE_HEIGHT = 80;
 		const ISLAND_SIDE_DEPTH = 18;
-		const ISLAND_ZOOM_BY_LEVEL = { 1: 1.9, 2: 1.4, 3: 1.0 };
+		const HARVEST_REWARD_PER_CARROT = 6;
+		const ISLAND_ZOOM_BY_LEVEL = { 1: 2.2, 2: 1.65, 3: 1.0 };
+		const ISLAND_SOURCE_SIZE = { 1: { width: 85, height: 85 }, 2: { width: 142, height: 92 }, 3: { width: 480, height: 258 } };
 		const CROP_GROWTH_MS = { potato: 30_000, carrot: 45_000, onion: 60_000 };
+		const rewardSpriteImageCache = new Map();
+		async function drawRewardSprite(canvas, sourceUrl, hexColor, tintMode = 'multiply') {
+			let imagePromise = rewardSpriteImageCache.get(sourceUrl);
+			if (!imagePromise) {
+				imagePromise = new Promise((resolve, reject) => {
+					const image = new Image();
+					image.onload = () => resolve(image);
+					image.onerror = reject;
+					image.src = sourceUrl;
+				});
+				rewardSpriteImageCache.set(sourceUrl, imagePromise);
+			}
+			let image;
+			try {
+				image = await imagePromise;
+			} catch {
+				rewardSpriteImageCache.delete(sourceUrl);
+				return false;
+			}
+			canvas.width = image.naturalWidth;
+			canvas.height = image.naturalHeight;
+			const context = canvas.getContext('2d');
+			if (!context) return false;
+			context.imageSmoothingEnabled = false;
+			context.clearRect(0, 0, canvas.width, canvas.height);
+			context.drawImage(image, 0, 0);
+			if (typeof hexColor === 'string' && /^0x[\da-f]{6}$/i.test(hexColor)) {
+				if (tintMode === 'overlay') {
+					context.globalCompositeOperation = 'source-atop';
+					context.globalAlpha = 0.52;
+					context.fillStyle = `#${hexColor.slice(2)}`;
+					context.fillRect(0, 0, canvas.width, canvas.height);
+					context.globalAlpha = 1;
+				} else {
+					context.globalCompositeOperation = 'multiply';
+					context.fillStyle = `#${hexColor.slice(2)}`;
+					context.fillRect(0, 0, canvas.width, canvas.height);
+					context.globalCompositeOperation = 'destination-in';
+					context.drawImage(image, 0, 0);
+				}
+				context.globalCompositeOperation = 'source-over';
+			}
+			return true;
+		}
+		let oceanBackdrop = null;
 		const getTileCoordinate = (tile, level) => {
 			if (!Number.isInteger(tile) || tile < 1 || tile > level * level) return null;
 			return { gridX: (tile - 1) % level, gridY: Math.floor((tile - 1) / level) };
+		};
+		const getIslandLayout = (scene, level) => {
+			const { width, height } = scene.scale;
+			const layout = { zoom: ISLAND_ZOOM_BY_LEVEL[level] || 1, centerY: height / 2 };
+			const compact = width < 700 || height <= 500;
+			const medium = width <= 1400 && height <= 850;
+			if (compact) {
+				const source = ISLAND_SOURCE_SIZE[level] || ISLAND_SOURCE_SIZE[3];
+				const sourceWidth = source.width * 3.2;
+				const sourceHeight = source.height * 3.2;
+				layout.zoom = Math.min(layout.zoom, width * 0.82 / sourceWidth, height * 0.68 / sourceHeight);
+				layout.centerY = height * 0.46;
+			} else if (medium) {
+				const source = ISLAND_SOURCE_SIZE[level] || ISLAND_SOURCE_SIZE[3];
+				layout.zoom = Math.min(layout.zoom, width * 0.82 / (source.width * 3.2), height * 0.64 / (source.height * 3.2));
+				layout.centerY = height * 0.52;
+			} else {
+				layout.centerY = height * 0.53;
+			}
+			return layout;
 		};
 		const getTilePosition = (scene, tile, level = scene.latestFarmState.level || 1, elevation = 0) => {
 			const coordinate = getTileCoordinate(tile, level);
@@ -118,7 +395,7 @@
 				...coordinate,
 				...projectIsometricPosition(coordinate.gridX, coordinate.gridY, {
 					originX: scene.scale.width / 2,
-					originY: scene.scale.height / 2 - (level - 1) * ISLAND_TILE_HEIGHT / 2,
+					originY: getIslandLayout(scene, level).centerY - (level - 1) * ISLAND_TILE_HEIGHT / 2,
 					tileWidth: ISLAND_TILE_WIDTH,
 					tileHeight: ISLAND_TILE_HEIGHT,
 					elevation
@@ -135,58 +412,69 @@
 				super({ key: 'FarmOverlay' });
 			}
 			preload() {
-				this.load.image('island-1x1', '/assets/1x1.png');
-				this.load.image('island-2x2', '/assets/2x2.png');
+				this.load.spritesheet('island-1x1', '/assets/1x1.png', { frameWidth: 85, frameHeight: 85 });
+				this.load.spritesheet('island-2x2', '/assets/2x2.png', { frameWidth: 142, frameHeight: 92 });
 				this.load.image('island-2x2-signs', '/assets/2x2signs.png');
 				this.load.image('carrot-stage-1', '/assets/Carrot1.png');
 				this.load.image('carrot-stage-2', '/assets/Carrot2.png');
 				this.load.image('carrot-stage-3', '/assets/Carrot3.png');
+				this.load.image('potato-stage-1', '/assets/Potato1.png');
+				this.load.image('potato-stage-2', '/assets/Potato2.png');
+				this.load.image('potato-stage-3', '/assets/Potato3.png');
+				this.load.image('onion-stage-1', '/assets/Onion1.png');
+				this.load.image('onion-stage-2', '/assets/Onion2.png');
+				this.load.image('onion-stage-3', '/assets/Onion3.png');
+				this.load.image('carrot-seeds', '/assets/CarrotSeeds.png');
+				this.load.image('onion-seeds', '/assets/OnionSeeds.png');
+				this.load.image('potato-seeds', '/assets/PotatoSeeds.png');
 				this.load.image('empty-sack', '/assets/emptySack.png');
 				this.load.image('wet-overlay', '/assets/WetOverlay.png');
 				this.load.image('watering-can', '/assets/wateringCan.png');
 			}
 
 			create() {
-				this.latestFarmState = { level: 1, crops: {}, farmName: "Streamer's farm" };
+				this.latestFarmState = { level: 1, crops: {} };
+				this.pendingPlantRevealTiles = new Set();
+				this.harvestingTiles = new Set();
+				this.displayedBankBalance = 0;
+				this.harvestBalanceAnimationActive = false;
+				this.pendingHarvestBankBalance = null;
 				this.debugIslandLevel = null;
-				this.drawBackdrop();
+				this.islandUpgradeTransition = false;
+				this.pendingIslandUpgradeState = null;
+				this.debugShinyChance = 0.1;
+				this.debugActiveChatters = 1;
+				this.anims.create({
+					key: 'island-1x1-seafoam',
+					frames: this.anims.generateFrameNumbers('island-1x1', { start: 0, end: 5 }),
+					frameRate: 2,
+					repeat: -1,
+					repeatDelay: 500
+				});
+				this.anims.create({
+					key: 'island-2x2-seafoam',
+					frames: this.anims.generateFrameNumbers('island-2x2', { start: 0, end: 5 }),
+					frameRate: 2,
+					repeat: -1,
+					repeatDelay: 500
+				});
 				this.drawTiles(1);
 				this.makeFarmerTexture();
 				this.makeCropTextures();
 				this.farmer = this.createFarmer();
-				this.drawFarmTitle();
 				this.renderCrops(this.latestFarmState.crops);
-				document.getElementById('debug-island').addEventListener('click', () => {
-					const currentLevel = this.debugIslandLevel || this.latestFarmState.level || 1;
-					this.debugIslandLevel = currentLevel % 3 + 1;
-					this.latestFarmState = { ...this.latestFarmState, level: this.debugIslandLevel };
-					document.getElementById('debug-island-size').textContent = `${this.debugIslandLevel}x${this.debugIslandLevel}`;
-					this.drawTiles(this.debugIslandLevel);
-					this.updateWetOverlays(this.latestFarmState.wetness);
-					this.drawFarmTitle();
-					this.renderCrops(this.latestFarmState.crops);
-				});
 
 				this.scale.on('resize', () => {
-					if (this.farmTitleTween) this.farmTitleTween.stop();
 					this.children.removeAll();
 					this.islandRenderObjects = [];
 					this.cropRenderObjects = [];
-					this.drawBackdrop();
 					this.drawTiles(this.latestFarmState.level || 1);
 					this.farmer = this.createFarmer();
-					this.drawFarmTitle();
 					this.renderCrops(this.latestFarmState.crops);
 				});
 				this.connectToBot();
 			}
 			update(time, delta) {
-				for (const strip of this.waterStrips || []) {
-					strip.sprite.x -= strip.speed * delta / 1000;
-					if (strip.sprite.x + strip.width < 0) strip.sprite.x = this.scale.width + strip.width;
-					const pulse = 0.5 + 0.5 * Math.sin((time + strip.phase) * Math.PI * 2 / strip.period);
-					strip.sprite.setAlpha(strip.baseAlpha * (0.12 + pulse * 0.88));
-				}
 				const zoom = this.cameras.main.zoom || 1;
 				for (const idle of this.readyCropAnimations || []) {
 					if (!idle.sprite.active) continue;
@@ -202,64 +490,25 @@
 					idle.sprite.setPosition(idle.x + xPixels / zoom, idle.y + yPixels / zoom);
 				}
 			}
-			drawBackdrop() {
-				const { width, height } = this.scale;
-				this.cameras.main.setBackgroundColor('#7fc7e4');
-				const colors = [0x9edbed, 0xa9e4ef, 0x8ed2e5, 0xb2e8f1];
-				const hash = (x, y, salt = 0) => {
-					let value = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(salt, 1442695041)) | 0;
-					value = Math.imul(value ^ (value >>> 13), 1274126177);
-					return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
-				};
-				const addWaterStrip = (x, y, stripWidth, stripHeight, color, baseAlpha, col, row, seed) => {
-					const sprite = this.add.rectangle(x, y, stripWidth, stripHeight, color, baseAlpha)
-						.setOrigin(0, 0).setDepth(1);
-					this.waterStrips.push({
-						sprite,
-						width: stripWidth,
-						baseAlpha,
-						speed: 4 + hash(col, row, seed) * 3.5,
-						phase: hash(col, row, seed + 1) * 7000,
-						period: 5500 + hash(col, row, seed + 2) * 3000
-					});
-				};
-
-				this.waterStrips = [];
-				// The reference water is a flat blue field with sparse, short wave pixels.
-				for (let row = 0; row < Math.ceil(height / 72); row++) {
-					for (let col = 0; col < Math.ceil(width / 104); col++) {
-						if (hash(col, row) > 0.32) continue;
-						const x = col * 104 + Math.floor(hash(col, row, 1) * 78);
-						const y = row * 72 + Math.floor(hash(col, row, 2) * 56);
-						const waveColor = colors[Math.floor(hash(col, row, 3) * colors.length)];
-						const waveAlpha = 0.55 + hash(col, row, 4) * 0.25;
-						const waveWidth = 10 + Math.floor(hash(col, row, 5) * 19);
-						const waveHeight = 2 + Math.floor(hash(col, row, 6) * 3);
-						addWaterStrip(x, y, waveWidth, waveHeight, waveColor, waveAlpha, col, row, 12);
-						if (hash(col, row, 7) > 0.7) {
-							const stripWidth = 4 + Math.floor(hash(col, row, 8) * 7);
-							addWaterStrip(x + 4, y - 4, stripWidth, 2, 0xb8eaf1, 0.72, col, row, 16);
-						}
-					}
-				}
-			}
 			drawTiles(level = 1) {
 				for (const object of this.islandRenderObjects || []) object.destroy();
 				this.islandRenderObjects = [];
 				this.wetOverlaySprites = {};
 				this.renderedIslandLevel = level;
-				this.cameras.main.setZoom(ISLAND_ZOOM_BY_LEVEL[level] || 1);
+				const { zoom, centerY } = getIslandLayout(this, level);
+				this.cameras.main.setZoom(zoom);
 				const centerX = this.scale.width / 2;
-				const centerY = this.scale.height / 2;
 				if (level === 1) {
-					const island = this.add.image(centerX, centerY, 'island-1x1').setScale(3.2).setDepth(2);
+					const island = this.add.sprite(centerX, centerY, 'island-1x1', 0).setScale(3.2).setDepth(2);
+					island.anims.play('island-1x1-seafoam');
 					this.islandRenderObjects.push(island);
 					this.drawWetOverlays(level);
 					return;
 				}
 				if (level === 2) {
-					const island = this.add.image(centerX, centerY, 'island-2x2').setScale(3.2).setDepth(2);
-					const signs = this.add.image(centerX, centerY, 'island-2x2-signs').setScale(3.2).setDepth(3);
+					const island = this.add.sprite(centerX, centerY, 'island-2x2', 0).setScale(3.2).setDepth(2);
+					island.anims.play('island-2x2-seafoam');
+					const signs = this.add.image(centerX, centerY, 'island-2x2-signs').setScale(3.2).setDepth(50);
 					this.islandRenderObjects.push(island, signs);
 					this.drawWetOverlays(level);
 					return;
@@ -323,6 +572,32 @@
 				}
 				this.drawWetOverlays(level);
 			}
+			transitionIslandUpgrade(farmState) {
+				this.pendingIslandUpgradeState = farmState;
+				if (this.islandUpgradeTransition) return;
+				this.islandUpgradeTransition = true;
+				const oldLand = [...(this.islandRenderObjects || []), ...(this.cropRenderObjects || [])]
+					.filter((object) => object?.active);
+				this.tweens.add({
+					targets: oldLand, alpha: 0, duration: 260, ease: 'Sine.easeIn',
+					onComplete: () => {
+						const nextState = this.pendingIslandUpgradeState || farmState;
+						this.pendingIslandUpgradeState = null;
+						this.latestFarmState = nextState;
+						this.drawTiles(nextState.level);
+						this.renderCrops(nextState.crops);
+						const wetOverlays = new Set(Object.values(this.wetOverlaySprites || {}));
+						const newLand = [...(this.islandRenderObjects || []), ...(this.cropRenderObjects || [])];
+						for (const object of newLand) object.setAlpha(0);
+						this.updateWetOverlays(nextState.wetness);
+						this.tweens.add({
+							targets: newLand.filter((object) => !wetOverlays.has(object)),
+							alpha: 1, duration: 280, ease: 'Sine.easeOut'
+						});
+						this.islandUpgradeTransition = false;
+					}
+				});
+			}
 			drawWetOverlays(level) {
 				// Match the source-pixel scale used by the island sprites so overlay pixels
 				// stay aligned with the ground art at every farm level.
@@ -342,78 +617,15 @@
 					const wetness = Math.max(0, Math.min(15, Number(wetnessByTile?.[tile]) || 0));
 					this.tweens.killTweensOf(overlay);
 					this.tweens.add({
-						targets: overlay, alpha: wetness / 15 * 0.78,
+						targets: overlay, alpha: wetness / 15 * 0.55,
 						duration: 260, ease: 'Sine.easeOut'
 					});
 				}
 			}
-			drawFarmTitle() {
-				if (this.farmTitleTween) this.farmTitleTween.stop();
-				if (this.farmTitle) this.farmTitle.destroy();
-				const textureKey = 'farm-title-pixel-texture';
-				if (this.textures.exists(textureKey)) this.textures.remove(textureKey);
-				const level = this.latestFarmState.level || 1;
-				const restY = this.scale.height / 2 - (60 + level * 50);
-				const title = this.latestFarmState.farmName || "Streamer's farm";
-				const fontSize = Math.max(16, Math.round(16 * this.scale.width / 1024));
-				const font = `${fontSize}px "Kiwi Soda"`;
-				const measureCanvas = document.createElement('canvas');
-				const measureContext = measureCanvas.getContext('2d');
-				measureContext.font = font;
-				const metrics = measureContext.measureText(title);
-				const padding = 4;
-				const canvas = document.createElement('canvas');
-				canvas.width = Math.ceil(metrics.width) + padding * 2;
-				canvas.height = fontSize + padding * 2;
-				const context = canvas.getContext('2d');
-				context.imageSmoothingEnabled = false;
-				context.font = font;
-				context.textAlign = 'center';
-				context.textBaseline = 'middle';
-				context.fillStyle = '#ffffff';
-				context.fillText(title, canvas.width / 2, canvas.height / 2);
-				// Threshold one shared glyph mask, then add a uniform one-pixel outline.
-				const glyphMask = context.getImageData(0, 0, canvas.width, canvas.height);
-				const pixelData = context.createImageData(canvas.width, canvas.height);
-				for (let y = 0; y < canvas.height; y++) {
-					for (let x = 0; x < canvas.width; x++) {
-						const sourceIndex = (y * canvas.width + x) * 4;
-						if (glyphMask.data[sourceIndex + 3] < 144) continue;
-						for (let offsetY = -1; offsetY <= 1; offsetY++) {
-							for (let offsetX = -1; offsetX <= 1; offsetX++) {
-								if (offsetX === 0 && offsetY === 0) continue;
-								const outlineX = x + offsetX;
-								const outlineY = y + offsetY;
-								if (outlineX < 0 || outlineX >= canvas.width || outlineY < 0 || outlineY >= canvas.height) continue;
-								const outlineIndex = (outlineY * canvas.width + outlineX) * 4;
-								if (glyphMask.data[outlineIndex + 3] >= 144) continue;
-								pixelData.data[outlineIndex] = 81;
-								pixelData.data[outlineIndex + 1] = 59;
-								pixelData.data[outlineIndex + 2] = 39;
-								pixelData.data[outlineIndex + 3] = 255;
-							}
-						}
-						pixelData.data[sourceIndex] = 255;
-						pixelData.data[sourceIndex + 1] = 255;
-						pixelData.data[sourceIndex + 2] = 255;
-						pixelData.data[sourceIndex + 3] = 255;
-					}
-				}
-				context.putImageData(pixelData, 0, 0);
-				const titleTexture = this.textures.addCanvas(textureKey, canvas);
-				titleTexture.setFilter(Phaser.Textures.FilterMode.NEAREST);
-				const cameraZoom = this.cameras.main.zoom || 1;
-				this.farmTitle = this.add.image(this.scale.width / 2, restY, textureKey)
-					.setScale(1.6 / cameraZoom).setDepth(2000);
-				this.farmTitleTween = this.tweens.add({
-					targets: this.farmTitle, y: restY - 4,
-					duration: 1700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
-				});
-			}
 			createFarmer() {
 				return addIsometricSprite(this, 'farmer', 0, 0, {
 					originX: this.scale.width / 2,
-					originY: this.scale.height / 2,
+					originY: getIslandLayout(this, this.latestFarmState.level || 1).centerY,
 					tileWidth: ISLAND_TILE_WIDTH,
 					tileHeight: ISLAND_TILE_HEIGHT,
 					elevation: 0,
@@ -462,6 +674,7 @@
 				let nextGrowthUpdateAt = Infinity;
 				for (const [tileText, crop] of Object.entries(crops || {})) {
 					const tile = Number(tileText);
+					if (this.pendingPlantRevealTiles?.has(tile) || this.harvestingTiles?.has(tile)) continue;
 					const position = getTilePosition(this, tile);
 					if (!crop || !position) continue;
 					const { gridX, gridY } = position;
@@ -473,11 +686,12 @@
 					const storedProgress = Number.isFinite(crop.growthProgressMs) ? crop.growthProgressMs : 0;
 					const progress = Math.min(growthDuration, Math.max(0, storedProgress + Math.max(0, now - updatedAt) * growthMultiplier));
 					const isGrown = progress >= growthDuration || now >= crop.readyAt;
-					const carrotStage = isGrown ? 3 : progress >= growthDuration / 2 ? 2 : 1;
-					const textureKey = crop.kind === 'carrot'
-						? `carrot-stage-${carrotStage}`
+					const hasThreeSpriteStages = crop.kind === 'carrot' || crop.kind === 'potato' || crop.kind === 'onion';
+					const spriteStage = isGrown ? 3 : progress >= growthDuration / 2 ? 2 : 1;
+					const textureKey = hasThreeSpriteStages
+						? `${crop.kind}-stage-${spriteStage}`
 						: `${crop.kind}-${isGrown ? 'grown' : 'seed'}`;
-					const carrotSpread = crop.kind === 'carrot' && this.latestFarmState.level === 2
+					const stagedCropSpread = hasThreeSpriteStages && this.latestFarmState.level === 2
 						? ({
 							1: { x: 0, y: -5 }, // top: slightly up
 							2: { x: 5, y: -5 }, // right: slightly right and up
@@ -486,24 +700,24 @@
 						}[tile] || { x: 0, y: 0 })
 						: { x: 0, y: 0 };
 					const screenPixelUp = 3 / (this.cameras.main.zoom || 1);
-					const cropOffset = crop.kind === 'carrot'
-						? { x: carrotSpread.x, y: carrotSpread.y - 4 - screenPixelUp }
+					const cropOffset = hasThreeSpriteStages
+						? { x: stagedCropSpread.x, y: stagedCropSpread.y - 4 - screenPixelUp }
 						: { x: 0, y: -screenPixelUp };
 					if (!isGrown) {
-						const nextMilestone = crop.kind === 'carrot' && progress < growthDuration / 2
+						const nextMilestone = hasThreeSpriteStages && progress < growthDuration / 2
 							? growthDuration / 2
 							: growthDuration;
 						nextGrowthUpdateAt = Math.min(nextGrowthUpdateAt, now + (nextMilestone - progress) / growthMultiplier);
 					}
-					const cropDepth = this.latestFarmState.level === 2 ? 2.5 : 100;
+					const cropDepth = this.latestFarmState.level === 2 ? 45 : 100;
 					const sprite = addIsometricSprite(this, textureKey, gridX, gridY, {
 						originX: this.scale.width / 2 + cropOffset.x,
-						originY: this.scale.height / 2 - (this.latestFarmState.level - 1) * ISLAND_TILE_HEIGHT / 2 + cropOffset.y,
+						originY: getIslandLayout(this, this.latestFarmState.level).centerY - (this.latestFarmState.level - 1) * ISLAND_TILE_HEIGHT / 2 + cropOffset.y,
 						tileWidth: ISLAND_TILE_WIDTH,
 						tileHeight: ISLAND_TILE_HEIGHT,
-						elevation: crop.kind === 'carrot' ? 0 : 22,
-						origin: crop.kind === 'carrot' ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 },
-						scale: crop.kind === 'carrot' ? 3.0 : isGrown ? 3.5 : 2.8,
+						elevation: hasThreeSpriteStages ? 0 : 22,
+						origin: hasThreeSpriteStages ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 },
+						scale: hasThreeSpriteStages ? 3.0 : isGrown ? 3.5 : 2.8,
 						depthOffset: cropDepth - (gridX + gridY) * 100
 					});
 					this.cropRenderObjects.push(sprite);
@@ -532,7 +746,37 @@
 				if (ownerTag?.active) ownerTag.setVisible(true);
 				return ownerTag || null;
 			}
-			showHarvest(tile = 1, cropKind = '') {
+			showHarvest(tile = 1, cropKind = '', harvestId = null, bankReturn = null, rewards = null) {
+				const harvestTile = Number(tile);
+				this.harvestingTiles.add(harvestTile);
+				this.currentHarvestTile = harvestTile;
+				this.latestFarmState = {
+					...this.latestFarmState,
+					crops: { ...(this.latestFarmState.crops || {}), [harvestTile]: null },
+					wetness: { ...(this.latestFarmState.wetness || {}), [harvestTile]: 0 }
+				};
+				const balanceElement = document.getElementById('global-balance');
+				const visibleBalance = Number(String(balanceElement?.textContent || '').replace(/[^\d-]/g, ''));
+				this.harvestBalanceAnimationActive = true;
+				this.pendingHarvestBankBalance = null;
+				this.displayedBankBalance = Number.isFinite(visibleBalance)
+					? visibleBalance
+					: Number(this.latestFarmState.bank || 0);
+				const rewardTotal = Number.isSafeInteger(bankReturn) && bankReturn >= 0
+					? bankReturn
+					: HARVEST_REWARD_PER_CARROT * 2;
+				const fallbackBase = Math.floor(rewardTotal / 2);
+				const fallbackRemainder = rewardTotal % 2;
+				this.harvestRewardItems = Array.isArray(rewards) && rewards.length === 2 && rewards.every((reward) =>
+					Number.isFinite(reward?.weightKg) && Number.isSafeInteger(reward?.bankReturn) && reward.bankReturn >= 0
+				)
+					? rewards
+					: Array.from({ length: 2 }, (_, index) => ({
+						weightKg: 0.2,
+						bankReturn: fallbackBase + (index < fallbackRemainder ? 1 : 0),
+						shiny: false
+					}));
+				const hasShinyReward = this.harvestRewardItems.some((reward) => reward.shiny === true);
 				const position = getTilePosition(this, tile) || getTilePosition(this, 1);
 				const cropSprite = this.cropSprites?.[tile];
 				const cropX = cropSprite?.x ?? position.x;
@@ -546,7 +790,17 @@
 					harvestedPlant = this.add.image(cropX, cropY, cropSprite.texture.key)
 						.setOrigin(cropSprite.originX, cropSprite.originY)
 						.setScale(cropSprite.scaleX, cropSprite.scaleY)
-						.setAngle(cropSprite.angle).setAlpha(cropSprite.alpha).setDepth(1700);
+						.setAngle(cropSprite.angle).setAlpha(cropSprite.alpha).setDepth(cropSprite.depth);
+					if (hasShinyReward) {
+						harvestedPlant.setTint(0xffdf57);
+						const glow = this.add.circle(cropX, cropY, Math.max(cropSprite.displayWidth, cropSprite.displayHeight) * 0.55, 0xffdd4a, 0.25)
+							.setDepth(cropSprite.depth - 1).setBlendMode(Phaser.BlendModes.ADD);
+						this.tweens.add({
+							targets: glow, alpha: 0, scale: 1.35, duration: 650, ease: 'Sine.easeOut',
+							onComplete: () => glow.destroy()
+						});
+					}
+					cropSprite.setVisible(false);
 				}
 
 				const sackSize = this.textures.get('empty-sack').getSourceImage();
@@ -570,11 +824,10 @@
 				const poofPlant = () => {
 					if (plantPoofed) return;
 					plantPoofed = true;
-					const cropTint = { carrot: 0xf28b3a, potato: 0xc59a61, onion: 0xd7c7ec };
 					const puff = spawnHarvestPuff(this, cropX, cropY, {
-						count: 14, tint: cropTint[cropKind || this.latestFarmState.crops?.[tile]?.kind] || 0xbaffc6
+						count: 14, tint: 0xffffff
 					});
-					puff.setDepth(1850);
+						puff.setDepth(cropSprite?.depth ?? (this.latestFarmState.level === 2 ? 45 : 100));
 					if (harvestedPlant?.active) {
 						this.tweens.add({
 							targets: harvestedPlant, alpha: 0, scaleX: 0, scaleY: 0,
@@ -610,7 +863,7 @@
 				};
 				const swoopProgress = { value: 0 };
 				this.tweens.add({
-					targets: swoopProgress, value: 1, duration: 1240, ease: 'Sine.easeInOut',
+					targets: swoopProgress, value: 1, duration: 950, ease: 'Sine.easeInOut',
 					onUpdate: () => {
 						if (!sack.active) return;
 						const progress = swoopProgress.value;
@@ -620,51 +873,315 @@
 					},
 					onComplete: () => {
 						if (!sack.active) return;
+						const viewTop = this.cameras.main.worldView?.y ?? (this.scale.height / 2 - this.scale.height / (2 * zoom));
 						this.tweens.add({
-							targets: sack, y: exit.y - ISLAND_TILE_HEIGHT * 1.25, angle: 0, alpha: 0,
-							duration: 400, ease: 'Sine.easeIn',
+							targets: sack, y: viewTop - sack.displayHeight / 2 - 8, angle: 0,
+							duration: 300, ease: 'Sine.easeIn',
 							onComplete: () => {
 								if (!plantPoofed) poofPlant();
 								sack.destroy();
 								this.harvestSacks.delete(tile);
+							this.time.delayedCall(300, () => this.queueHarvestRewardSequence(harvestId, cropKind, this.harvestRewardItems));
 							}
 						});
 					}
 				});
 			}
-			showWatering(tile = 1) {
+			queueHarvestRewardSequence(harvestId = null, cropKind = '', rewardItems = []) {
+				this.harvestRewardQueue = (this.harvestRewardQueue || Promise.resolve())
+					.then(() => this.playHarvestRewardSequence(harvestId, cropKind, rewardItems))
+					.catch((error) => {
+						console.error('Harvest reward animation failed:', error);
+						this.completeHarvestBalanceAnimation();
+						this.finishHarvestAnimation(harvestId);
+					});
+			}
+			async playHarvestRewardSequence(harvestId = null, cropKind = '', rewardItems = []) {
+				const stage = document.getElementById('harvest-reward-stage');
+				const carrot = stage?.querySelector('.reward-carrot');
+				const weight = stage?.querySelector('.reward-weight');
+				const shinyLabel = stage?.querySelector('.reward-shiny-label');
+				const modifierLabel = stage?.querySelector('.reward-modifier-label');
+				const mutantLabel = stage?.querySelector('.reward-mutant-label');
+				const payout = stage?.querySelector('.reward-payout');
+				const bagWindow = stage?.querySelector('.reward-bag-window');
+				if (!stage || !carrot || !weight || !shinyLabel || !modifierLabel || !mutantLabel || !payout || !bagWindow) {
+					this.completeHarvestBalanceAnimation();
+					this.finishHarvestAnimation(harvestId);
+					return;
+				}
+				const wait = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
+				const cropSpriteUrl = cropKind === 'potato'
+					? '/assets/Potato.png'
+					: cropKind === 'onion' ? '/assets/Onion.png' : '/assets/Carrot.png';
+				carrot.classList.remove('visible', 'shiny');
+				weight.classList.remove('visible');
+				shinyLabel.classList.remove('visible');
+				modifierLabel.classList.remove('visible');
+				mutantLabel.classList.remove('visible');
+				payout.classList.remove('visible');
+				payout.textContent = '';
+
+				stage.classList.add('active');
+				stage.setAttribute('aria-hidden', 'false');
+				void stage.offsetWidth;
+				stage.classList.add('reward-active', 'bag-up');
+				await wait(450);
+
+				for (let item = 0; item < 2; item++) {
+					carrot.classList.remove('visible');
+					weight.classList.remove('visible');
+					shinyLabel.classList.remove('visible');
+					modifierLabel.classList.remove('visible');
+					mutantLabel.classList.remove('visible');
+					payout.classList.remove('visible');
+					const reward = rewardItems[item] || { weightKg: 0.2, bankReturn: HARVEST_REWARD_PER_CARROT };
+					const hasSpecialModifier = typeof reward.modifier === 'string' && /^0x[\da-f]{6}$/i.test(reward.hexColor || '');
+					const spriteTint = hasSpecialModifier ? reward.hexColor : reward.shiny === true ? '0xffff50' : null;
+					await drawRewardSprite(carrot, cropSpriteUrl, spriteTint, reward.shiny && !hasSpecialModifier ? 'overlay' : 'multiply');
+					carrot.classList.toggle('shiny', reward.shiny === true);
+					carrot.classList.toggle('special', hasSpecialModifier);
+					const itemReward = reward.bankReturn;
+					const weightKg = Number(reward.weightKg) || 0.2;
+					const modifier = weightKg >= 1 ? 'MASSIVE' : weightKg >= 0.3 ? 'CHUNKY' : '';
+					weight.textContent = `Weight: ${weightKg.toFixed(2)} kg`;
+					modifierLabel.textContent = modifier;
+					mutantLabel.textContent = hasSpecialModifier && /^[A-Z]{1,12}$/.test(reward.modifier || '') ? reward.modifier : '';
+					mutantLabel.style.color = /^0x[\da-f]{6}$/i.test(reward.hexColor || '') ? `#${reward.hexColor.slice(2)}` : '#d7ffb0';
+					payout.textContent = `+${itemReward}g`;
+					void carrot.offsetWidth;
+					carrot.classList.add('visible');
+					await wait(420);
+					weight.classList.add('visible');
+					if (reward.shiny === true) {
+						await wait(140);
+						shinyLabel.classList.add('visible');
+					}
+					if (modifier) {
+						await wait(reward.shiny === true ? 100 : 140);
+						modifierLabel.classList.add('visible');
+					}
+					if (mutantLabel.textContent) {
+						await wait(modifier || reward.shiny === true ? 100 : 140);
+						mutantLabel.classList.add('visible');
+					}
+					await wait(reward.shiny === true || modifier ? 1700 : 850);
+					const coinsInFlight = this.flyRewardCoins(
+						carrot,
+						itemReward,
+						(coinValue) => this.onRewardCoinLanded(coinValue),
+						() => this.showRewardPayout(payout)
+					);
+					carrot.classList.remove('visible');
+					weight.classList.remove('visible');
+					shinyLabel.classList.remove('visible');
+					modifierLabel.classList.remove('visible');
+					mutantLabel.classList.remove('visible');
+					await wait(140);
+					await coinsInFlight;
+					if (item < 1) await wait(260);
+				}
+
+				stage.classList.remove('bag-up', 'reward-active');
+				await wait(450);
+				stage.classList.remove('active');
+				stage.setAttribute('aria-hidden', 'true');
+				this.completeHarvestBalanceAnimation();
+				this.finishHarvestAnimation(harvestId);
+			}
+			completeHarvestBalanceAnimation() {
+				this.harvestBalanceAnimationActive = false;
+				if (Number.isSafeInteger(this.pendingHarvestBankBalance)) {
+					this.displayedBankBalance = this.pendingHarvestBankBalance;
+					this.updateBalanceDisplay();
+				}
+				this.pendingHarvestBankBalance = null;
+			}
+			finishHarvestAnimation(harvestId) {
+				if (Number.isInteger(this.currentHarvestTile)) {
+					this.harvestingTiles.delete(this.currentHarvestTile);
+					this.currentHarvestTile = null;
+				}
+				if (harvestId === null || !this.botSocket || this.botSocket.readyState !== WebSocket.OPEN) return;
+				this.botSocket.send(JSON.stringify({ type: 'harvest.animation.complete', harvestId }));
+			}
+			updateBalanceDisplay() {
+				const balance = document.getElementById('global-balance');
+				if (balance) balance.textContent = `$${Number(this.displayedBankBalance || 0).toLocaleString()}`;
+			}
+			onRewardCoinLanded(value = 1) {
+				this.displayedBankBalance = Number(this.displayedBankBalance || 0) + value;
+				this.updateBalanceDisplay();
+				const balance = document.querySelector('#farm-menu .balance-group');
+				balance?.animate([
+					{ transform: 'translateX(-50%) scale(1)' },
+					{ transform: 'translateX(-50%) scale(1.1)' },
+					{ transform: 'translateX(-50%) scale(1)' }
+				], { duration: 190, easing: 'cubic-bezier(0.18, 0.8, 0.3, 1)' });
+			}
+			showRewardPayout(payout) {
+				payout.classList.remove('visible');
+				void payout.offsetWidth;
+				payout.classList.add('visible');
+			}
+			flyRewardCoins(carrot, rewardAmount, onCoinLanded, onBurst) {
+				const layer = document.querySelector('#harvest-reward-stage .reward-coins');
+				const balance = document.querySelector('#farm-menu .balance-group');
+				if (!layer || !balance || rewardAmount <= 0) return Promise.resolve();
+				const carrotRect = carrot.getBoundingClientRect();
+				const balanceRect = balance.getBoundingClientRect();
+				const startX = carrotRect.left + carrotRect.width / 2;
+				const startY = carrotRect.top + carrotRect.height / 2;
+				const targetX = balanceRect.left + balanceRect.width / 2;
+				const targetY = balanceRect.top + balanceRect.height / 2;
+				const flights = [];
+				let payoutShown = false;
+				const coinCount = Math.min(8, rewardAmount);
+				const valuePerCoin = Math.floor(rewardAmount / coinCount);
+				const remainingValue = rewardAmount % coinCount;
+
+				for (let index = 0; index < coinCount; index++) {
+					const coin = document.createElement('img');
+					coin.className = 'reward-coin';
+					coin.src = '/assets/coin.png';
+					coin.alt = '';
+					layer.appendChild(coin);
+					const coinSize = coin.getBoundingClientRect().width;
+					coin.style.left = `${startX - coinSize / 2}px`;
+					coin.style.top = `${startY - coinSize / 2}px`;
+					const angle = Math.random() * Math.PI * 2;
+					const radius = Phaser.Math.Between(52, 108);
+					const burstX = Math.cos(angle) * radius;
+					const burstY = Math.sin(angle) * radius;
+					const coinValue = valuePerCoin + (index < remainingValue ? 1 : 0);
+					const flight = async () => {
+						await new Promise((resolve) => setTimeout(resolve, index * 10));
+						const burst = coin.animate([
+							{ transform: 'translate(0, 0) scale(0.35)', opacity: 0.2 },
+							{ transform: `translate(${burstX}px, ${burstY}px) scale(1.2)`, opacity: 1 }
+						], { duration: 235, easing: 'cubic-bezier(0.12, 0.82, 0.22, 1)', fill: 'forwards' });
+						await burst.finished.catch(() => {});
+						if (!payoutShown) {
+							payoutShown = true;
+							onBurst?.();
+						}
+						const home = coin.animate([
+							{ transform: `translate(${burstX}px, ${burstY}px) scale(1.2)`, opacity: 1 },
+							{ transform: `translate(${targetX - startX}px, ${targetY - startY}px) scale(0.35)`, opacity: 0.92 }
+						], { duration: 570 + (index % 3) * 40, easing: 'cubic-bezier(0.46, 0, 0.2, 1)', fill: 'forwards' });
+						await home.finished.catch(() => {});
+						coin.remove();
+						onCoinLanded?.(coinValue);
+					};
+					flights.push(flight());
+				}
+				return Promise.all(flights);
+			}
+			showFloatingActionLabel(x, y, username, symbol = '') {
+				if (!username) return;
+				const labelText = symbol ? `${symbol} @${username}` : `@${username}`;
+				const label = this.add.text(x, y, labelText, {
+					fontFamily: '"Pixelify Sans", "Segoe UI Emoji", sans-serif',
+					fontSize: '16px', color: '#ffffff',
+					stroke: '#26343a', strokeThickness: 3,
+					shadow: { offsetX: 1, offsetY: 2, color: '#19252a', blur: 0, fill: true }
+				}).setOrigin(0.5, 1).setDepth(2300);
+				this.tweens.add({
+					targets: label, y: y - 42, alpha: 0,
+					delay: 350, duration: 3000, ease: 'Sine.easeInOut',
+					onComplete: () => label.destroy()
+				});
+			}
+			showWatering(tile = 1, username = '') {
 				const position = getTilePosition(this, tile);
 				if (!position) return;
 				const zoom = this.cameras.main.zoom || 1;
 				const spread = Math.max(28, ISLAND_TILE_WIDTH * 0.38);
 				const x = Phaser.Math.Clamp(position.x + Phaser.Math.Between(-spread, spread), 18, this.scale.width - 18);
 				const y = position.y - 28;
+				this.showFloatingActionLabel(x, y - 50, username, '💧');
 				const can = this.add.image(x, y, 'watering-can')
 					.setOrigin(0.5, 0.75).setScale(3.2 / zoom).setAngle(8).setAlpha(0).setDepth(1800);
 				this.tweens.add({
-					targets: can, alpha: 1, angle: -68, duration: 240, ease: 'Sine.easeInOut',
+					targets: can, alpha: 1, angle: -68, duration: 420, ease: 'Cubic.easeInOut',
 					onComplete: () => {
 						const dropColors = [0x51b9f4, 0x8cddff, 0xd6f5ff];
 						const emitDropBurst = () => {
-							for (let index = 0; index < 6; index++) {
+							for (let index = 0; index < 3; index++) {
 								const drop = this.add.rectangle(
 									x + Phaser.Math.Between(-9, 9), y + 7 + Phaser.Math.Between(-2, 3),
 									2 + (index % 2), 3, dropColors[index % dropColors.length], 1
-								).setDepth(1801);
+								).setDepth(1799);
 								this.tweens.add({
 									targets: drop,
-									x: drop.x + Phaser.Math.Between(-12, 12),
-									y: drop.y + Phaser.Math.Between(8, 18),
-									alpha: 0, duration: 300 + index * 18, ease: 'Sine.easeOut',
+									x: drop.x + Phaser.Math.Between(-4, 4),
+									y: drop.y + Phaser.Math.Between(24, 34),
+									alpha: 0, duration: 240 + index * 12, ease: 'Sine.easeIn',
 									onComplete: () => drop.destroy()
 								});
 							}
 						};
 						emitDropBurst();
-						this.time.delayedCall(220, emitDropBurst);
+						this.time.addEvent({
+							delay: 75,
+							repeat: 10,
+							callback: () => {
+								if (can.active) emitDropBurst();
+							}
+						});
 						this.tweens.add({
-							targets: can, angle: 0, alpha: 0, duration: 380, delay: 850, ease: 'Sine.easeOut',
+							targets: can, angle: 0, alpha: 0, duration: 520, delay: 850, ease: 'Cubic.easeOut',
 							onComplete: () => can.destroy()
+						});
+					}
+				});
+			}
+			showPlanting(tile = 1, cropKind = 'potato', username = '', onCropReveal = null) {
+				const position = getTilePosition(this, tile);
+				if (!position) {
+					onCropReveal?.();
+					return;
+				}
+				const texture = `${cropKind}-seeds`;
+				if (!this.textures.exists(texture)) {
+					console.warn(`Missing seed packet texture: ${texture}`);
+					onCropReveal?.();
+					return;
+				}
+				const zoom = this.cameras.main.zoom || 1;
+				const packetX = position.x - 4;
+				const y = position.y - 34;
+				this.showFloatingActionLabel(position.x, position.y - 73, username, '🌱');
+				const packet = this.add.image(packetX, y, texture)
+					.setOrigin(0.5, 0.75).setScale(2.1 / zoom).setAngle(8).setAlpha(0).setDepth(1800);
+				this.tweens.add({
+					targets: packet, alpha: 1, y: y - 24, angle: -96,
+					duration: 560, ease: 'Cubic.easeInOut',
+					onComplete: () => {
+						const soilSourceHalfWidth = Math.max(5, packet.displayWidth * 0.34);
+						const bagBounds = packet.getBounds();
+						const soilStartY = bagBounds.bottom - 7;
+						for (let index = 0; index < 20; index++) {
+							const size = index % 4 === 0 ? 4 : 3;
+							const soilStartX = packetX - 6 + Phaser.Math.Between(-soilSourceHalfWidth, soilSourceHalfWidth);
+							const soil = this.add.rectangle(
+								soilStartX, soilStartY + Phaser.Math.Between(-2, 2), size, size,
+								[0x4a2b16, 0x603718, 0x75451f, 0x382113][index % 4], 1
+							).setDepth(1799);
+							this.tweens.add({
+								targets: soil,
+								x: soilStartX + Phaser.Math.Between(-3, 3),
+								y: position.y - 9, alpha: 0,
+								delay: index * 40, duration: 400 + Phaser.Math.Between(0, 100),
+								ease: 'Sine.easeIn',
+								onComplete: () => soil.destroy()
+							});
+						}
+						this.time.delayedCall(650, () => onCropReveal?.());
+						this.tweens.add({
+							targets: packet, angle: 8, y: y - 8, alpha: 0,
+							delay: 650, duration: 520, ease: 'Cubic.easeOut',
+							onComplete: () => packet.destroy()
 						});
 					}
 				});
@@ -691,26 +1208,56 @@
 			}
 			connectToBot() {
 				const socket = new WebSocket('ws://localhost:8080');
+				this.botSocket = socket;
 				socket.addEventListener('message', (event) => {
 					try {
 						const message = JSON.parse(event.data);
-						if (message.type === 'farm.state') {
-							document.getElementById('global-balance').textContent = `$${Number(message.bank || 0).toLocaleString()}`;
+						if (message.type === 'debug.settings') {
+							this.debugShinyChance = message.shinyChance === 0.5 ? 0.5 : 0.1;
+							this.debugActiveChatters = message.activeChatters === 50 ? 50 : 1;
+							this.debugIslandLevel = message.islandLevel === 1 || message.islandLevel === 2 ? message.islandLevel : null;
+							const displayLevel = this.debugIslandLevel || this.latestFarmState.level || 1;
+							if (displayLevel !== this.latestFarmState.level) {
+								this.latestFarmState = { ...this.latestFarmState, level: displayLevel };
+								this.drawTiles(displayLevel);
+								this.updateWetOverlays(this.latestFarmState.wetness);
+								this.renderCrops(this.latestFarmState.crops);
+							}
+						} else if (message.type === 'farm.state') {
+							const bankBalance = Number(message.bank || 0);
+							if (this.harvestBalanceAnimationActive) this.pendingHarvestBankBalance = bankBalance;
+							else {
+								this.displayedBankBalance = bankBalance;
+								this.updateBalanceDisplay();
+							}
 							const farmState = this.debugIslandLevel ? { ...message, level: this.debugIslandLevel } : message;
-							document.getElementById('debug-island-size').textContent = `${farmState.level}x${farmState.level}`;
-							const titleChanged = farmState.farmName !== this.latestFarmState.farmName;
 							this.latestFarmState = farmState;
+							if (this.islandUpgradeTransition) {
+								this.pendingIslandUpgradeState = farmState;
+								return;
+							}
 							const levelChanged = farmState.level !== this.renderedIslandLevel;
-							if (levelChanged) this.drawTiles(farmState.level);
+							if (levelChanged) {
+								this.transitionIslandUpgrade(farmState);
+								return;
+							}
 							this.updateWetOverlays(farmState.wetness);
-							if (levelChanged || titleChanged) this.drawFarmTitle();
 							this.renderCrops(farmState.crops);
 						} else if (message.type === 'farm.harvest.progress') {
 							this.showHarvestProgress(message);
 						} else if (message.type === 'farm.harvested') {
-							this.showHarvest(message.tile, message.crop);
+							this.showHarvest(message.tile, message.crop, message.harvestId, message.bankReturn, message.rewards);
 						} else if (message.type === 'farm.watered') {
-							this.showWatering(message.tile);
+							this.showWatering(message.tile, message.username);
+						} else if (message.type === 'farm.planted') {
+							const tile = Number(message.tile);
+							this.pendingPlantRevealTiles.add(tile);
+							this.showPlanting(message.tile, message.crop, message.username, () => {
+								this.pendingPlantRevealTiles.delete(tile);
+								this.renderCrops(this.latestFarmState.crops);
+							});
+						} else if (message.type === 'farm.cheer.grow') {
+							this.showFloatingActionLabel(this.scale.width / 2, this.scale.height / 2 - 110, message.username, '✨');
 						} else if (message.type === 'command.harvest') {
 							this.showHarvest(1);
 						}
@@ -719,46 +1266,26 @@
 					}
 				});
 				socket.addEventListener('close', () => {
+					if (this.botSocket === socket) this.botSocket = null;
 					setTimeout(() => this.connectToBot(), 2000);
 				});
 				socket.addEventListener('error', () => socket.close());
 			}
 		}
 
-		function pixelateCommandEmojis() {
-			for (const original of document.querySelectorAll('#farm-menu .plant-emoji')) {
-				const pixelCanvas = document.createElement('canvas');
-				pixelCanvas.width = 8;
-				pixelCanvas.height = 8;
-				const context = pixelCanvas.getContext('2d');
-				if (!context) continue;
-				context.imageSmoothingEnabled = false;
-				context.font = '8px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
-				context.textAlign = 'center';
-				context.textBaseline = 'middle';
-				context.fillText(original.textContent.trim(), 4, 4);
-				pixelCanvas.className = original.className;
-				pixelCanvas.setAttribute('aria-hidden', 'true');
-				original.replaceWith(pixelCanvas);
-			}
-		}
-
 		try {
-			await Promise.all([
-				document.fonts.load('16px "Pixelify Sans"'),
-				document.fonts.load('16px "Kiwi Soda"')
-			]);
+			await document.fonts.load('16px "Pixelify Sans"');
 		} catch (error) {
-			console.warn('A game font did not load; using its fallback.', error);
+			console.warn('The overlay font did not load; using its fallback.', error);
 		}
-		pixelateCommandEmojis();
-
+		oceanBackdrop = new OceanBackdrop(document.getElementById('ocean-background'));
 		new Phaser.Game({
 			type: Phaser.CANVAS,
 			parent: 'game',
 			width: window.innerWidth,
 			height: window.innerHeight,
-			backgroundColor: '#7fc7e4',
+			backgroundColor: 'rgba(0,0,0,0)',
+			transparent: true,
 			pixelArt: true,
 			render: { antialias: false, pixelArt: true, roundPixels: true },
 			scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },

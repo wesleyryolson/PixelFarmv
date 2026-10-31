@@ -1,106 +1,114 @@
 # Pixel Farm
 
-Pixel Farm is a little Twitch chat farm. Viewers plant crops, water them to speed up growth, and vote together to harvest. The farm runs as a browser overlay, so it can sit in an OBS Browser Source while the bot listens to chat.
+<p align="center">
+  <img src="FarmBot/Assets/PixelFarmLogo.png" alt="Pixel Farm logo" width="420">
+</p>
 
-This is a hackathon project, so the quickest way to try it is to run the bot on your own computer and open the local overlay.
+Pixel Farm is a Twitch chat-driven farming game presented as a transparent browser overlay. Viewers plant and water crops, then cooperate to harvest them. The project includes a Phaser overlay, a Twitch EventSub bot, and an optional mock-chat page for demos.
 
-## What you need
+## Run locally
 
-- Node.js 18 or newer (the project uses Node's built-in `fetch`)
-- A Twitch account for the channel
-- A Twitch account for the bot (you can use the same account for a quick demo)
-- A Twitch Developer application and a user access token for the bot account
-
-## Run it locally
+Requirements: Node.js 18 or newer, npm, a Twitch account, and a Twitch Developer application.
 
 From the repository root:
 
 ```bash
 cd FarmBot
 npm install
-```
-
-Create your local environment file from the example, then fill in the Twitch values described below:
-
-```bash
 cp .env.example .env.local
 ```
 
-On Windows PowerShell, use `Copy-Item .env.example .env.local` instead.
+On Windows PowerShell, copy the example with:
 
-Start the bot and overlay server:
+```powershell
+Copy-Item .env.example .env.local
+```
+
+Fill in the required Twitch values in `FarmBot/.env.local`, then start the bot and local web server:
 
 ```bash
 node bot.js
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in a browser. To put it on stream, add that same URL as an OBS **Browser Source**. Keep the terminal running while the overlay is in use; closing it stops both the bot and the local server. The bot logs chat activity and connection status in that terminal.
+Open the overlay at [http://localhost:8080](http://localhost:8080). For OBS, add that URL as a Browser Source. The farm background is transparent.
 
-The farm state and leaderboard are saved in `FarmBot/farm-state.json` and `FarmBot/leaderboard.json`, so progress survives a restart. Back these up before resetting or replacing them.
+The optional mock chat page is at [http://localhost:8080/chat-simulator](http://localhost:8080/chat-simulator). Add it as a separate OBS Browser Source for a demo chat panel. Keep the bot process running while either page is in use.
 
-## Twitch bot setup
+The overlay loads Phaser 3.90 from jsDelivr, so the browser needs internet access. Port `8080` serves the pages and their local WebSocket connection.
 
-The bot uses Twitch EventSub over a WebSocket. It reads chat as the bot account, sends replies as that account, and uses the broadcaster's ID to select the channel. The values below must refer to the same accounts you authorize.
+## Twitch setup
 
-1. Sign in to the [Twitch Developer Console](https://dev.twitch.tv/console) and create an application. Twitch requires 2FA on the developer account. For the redirect URL, `http://localhost:3000` is fine when using the Twitch CLI token flow below; choose a desktop application category.
-2. Open the application in the console and copy its **Client ID** into `CLIENT_ID`.
-3. Install and configure the [Twitch CLI](https://dev.twitch.tv/docs/cli/), using this app's Client ID. Generate a **user access token while signed in as the bot account**, with these scopes:
+1. Create a Twitch application in the [Developer Console](https://dev.twitch.tv/console) and copy its Client ID.
+2. Install and configure the [Twitch CLI](https://dev.twitch.tv/docs/cli/). While signed in as the bot account, generate a user token with the chat scopes and whisper scope:
 
    ```bash
    twitch token --user-token --scopes "user:read:chat user:write:chat user:manage:whispers"
    ```
 
-   Copy the access token (the `access_token` value, without an `oauth:` prefix) into `OAUTH_TOKEN`. The first two scopes let the bot read and send chat messages; `user:manage:whispers` lets `!shop` send its response privately. If you leave off the whisper scope, the rest of the farm can work, but `!shop` cannot send its private reply. Twitch's [chat authentication guide](https://dev.twitch.tv/docs/chat/authenticating/) documents the token flow and scopes.
-4. Find the numeric Twitch User ID for the account that will run the bot and put it in `BOT_USER_ID`. Find the channel owner's numeric User ID and put it in `CHAT_CHANNEL_USER_ID`. These are not usernames or channel URLs. You can look up either account with Twitch's [Get Users API](https://dev.twitch.tv/docs/api/reference/#get-users) or another trusted Twitch ID lookup tool.
-5. Save the file as `FarmBot/.env.local`, start the bot, and check the terminal for `Validated token.` and `Subscribed to channel.chat.message`. If Twitch rejects the subscription, check that the token belongs to `BOT_USER_ID`, has `user:read:chat`, and that the bot account can join the channel's chat.
+   Put the token value in `OAUTH_TOKEN` without an `oauth:` prefix. The whisper scope is needed for private `!shop` and `!leaderboard` replies.
+3. Set `CLIENT_ID`, the bot account's numeric ID in `BOT_USER_ID`, and the channel owner's numeric ID in `CHAT_CHANNEL_USER_ID`.
+4. Save the file as `FarmBot/.env.local`, then run `node bot.js` from the `FarmBot` directory. Look for `Validated token.` and a successful `channel.chat.message` subscription in the terminal.
 
-The app does not need a Client Secret at runtime. Keep access tokens private, and do not commit `.env.local`. Twitch access tokens expire; if the bot later reports an invalid token, generate a fresh token and update `OAUTH_TOKEN`.
+`bits:read` is optional. Add that scope to the bot token to enable the 500-bit crop-growth reward. Without it, the bot warns that the reward is disabled and continues without the Cheer subscription. The bot does not need a Client Secret at runtime. Do not commit `.env.local` or share its token values.
 
 ## Environment variables
 
-The bot loads `.env.local` from the directory where you run `node bot.js` (normally `FarmBot/`). The committed [`.env.example`](FarmBot/.env.example) lists every variable the app reads:
+The bot loads `.env.local` and `.env` from the current working directory; values already loaded from `.env.local` take precedence. Run the bot from `FarmBot/` so these files are found. The Twitch variables are required; `OPENAI_API_KEY` is optional.
 
-| Variable | What goes here | Where to find it |
-| --- | --- | --- |
-| `CLIENT_ID` | The Twitch application's Client ID | Developer Console → Applications → your app → Manage |
-| `OAUTH_TOKEN` | A user access token for the bot account | Generate with Twitch CLI as described above; include `user:read:chat` and `user:write:chat`. Add `user:manage:whispers` for `!shop`. |
-| `BOT_USER_ID` | Numeric User ID of the account represented by the token | Twitch Get Users API or a trusted Twitch ID lookup tool |
-| `CHAT_CHANNEL_USER_ID` | Numeric User ID of the channel owner | Twitch Get Users API or a trusted Twitch ID lookup tool |
+| Variable | Purpose |
+| --- | --- |
+| `CLIENT_ID` | Twitch Developer application Client ID |
+| `OAUTH_TOKEN` | Bot account user access token |
+| `BOT_USER_ID` | Numeric Twitch ID for the bot account |
+| `CHAT_CHANNEL_USER_ID` | Numeric Twitch ID for the channel owner |
+| `OPENAI_API_KEY` | Optional key for generating special crop modifier words and tint colors; leave blank to use built-in presets |
 
-Use the bot account's ID for `BOT_USER_ID`, even if the bot and channel owner are the same person. The OAuth token is a secret; the Client ID and User IDs are identifiers, not passwords.
+With an OpenAI key, the bot uses `gpt-4o-mini` to generate a one-word modifier and a hex color for a special crop. Without a key, it selects from the local Cosmic, Glitch, Inferno, and Radioactive presets. Special modifiers are only generated after a crop rolls shiny and passes a second 30% chance. The default shiny chance is 10%; a special modified shiny crop has a 5× modifier value multiplier in addition to the 5× shiny multiplier.
 
 ## Chat commands
 
-### Public commands
-
-Anyone in the channel can use these:
-
-| Command | What it does |
+| Command | Behavior |
 | --- | --- |
-| `!buy <crop> <tile>` | Plant on an empty, unlocked tile. Crops are `potato` (free), `carrot` ($30), and `onion` ($100). Plural names also work. |
-| `!water <tile>` | Water a tile to speed up its crop. Each chatter can water once every 15 seconds, and each tile tops out at 15 water. |
-| `!harvest <tile>` | Vote to harvest a fully grown crop. The number of unique votes needed depends on how many chatters are active. |
-| `!shop` | Send the current crop prices, bank balance, and island size to you in a Twitch whisper. Requires the bot token's `user:manage:whispers` scope. |
-| `!leaderboard` | Show the top five farmers by harvest points. |
+| `!plant <crop> <tile>` | Plant a crop on an empty unlocked tile. Crops: `potato` (free), `carrot` ($75), and `onion` ($250). |
+| `!water <tile>` | Water a planted crop to speed up growth. Watering stacks up to 15 times per tile, for up to 5× growth speed. Each chatter has a 15-second watering cooldown; the channel owner bypasses it. |
+| `!harvest <tile>` | Vote to harvest a fully grown crop. Each successful harvest produces two crop rewards. `#` before the tile number is optional. |
+| `!shop` | Privately send the crop prices, shared bank balance, and island size to the chatter. |
+| `!leaderboard` | Privately send the top three farmers by harvest points. |
 
-The island starts as a 1×1 plot and expands to 2×2 after 4 harvests, then 3×3 after 12. Use the tile numbers shown on the overlay; `!water` and `!harvest` also accept an optional `#` before the number.
+Harvests require unique chatter votes based on active chatters from the preceding five minutes: fewer than 10 chatters requires one vote; 10–50 requires five; above 50 adds one vote for each additional 10 chatters (rounded up). The crop's planter receives 20% of its harvest value as leaderboard points, and the remaining 80% goes to the shared bank.
 
-### Admin command
+All crops average about 0.2 kg; heavier crops are worth more. Shiny crops are worth 5× their normal weight-adjusted value. Rare special modifiers add another 5× and appear with a generated or preset tint. A 500-bit Cheer instantly grows all planted crops when the bot has the optional `bits:read` scope.
 
-Only the channel owner account can change the farm name:
+The farm starts at 1×1 and expands to 2×2 after 10 successful harvests. It currently caps at 2×2; 3×3 expansion is disabled.
 
-| Command | What it does |
+## Mock-chat terminal controls
+
+Type these commands into the terminal running `node bot.js`. They change the local demo settings without adding debug buttons to the overlay.
+
+| Terminal command | Behavior |
 | --- | --- |
-| `!rename <name>` | Set the name shown for the farm. Names can be up to 32 characters. |
+| `mock activity 0-8` | Set mock-chat activity; `0` disables it, and `8` sends actions about every 125 ms. |
+| `mock on` / `mock off` | Resume or stop mock activity. |
+| `mock shiny` | Toggle the shiny chance between 10% and 50%. |
+| `mock size` | Toggle the visual preview between 1×1 and 2×2. This does not change saved farm progression. |
+| `mock chatters` | Toggle simulated active chatters between 1 and 50. |
+| `mock status` | Show the current mock activity, shiny chance, preview size, and chatter setting. |
+| `mock help` | Show the command list. |
 
-The owner check uses `CHAT_CHANNEL_USER_ID`, so the command must come from that Twitch account. If no custom name is set, the farm uses `<streamer>'s farm` automatically.
+The mock chat generates planting, watering, harvest votes, and reactions to heavy, shiny, or specially modified crops. Its simulated messages are displayed on the mock-chat page and are not sent to Twitch.
 
-## A couple of notes
+## Saved data
 
-- The small **DEBUG** button on the overlay cycles the island preview size. It is only a visual preview and does not change the farm's saved progression.
-- The overlay loads Phaser 3.90 from jsDelivr, so the browser needs internet access for that library.
-- The server uses port `8080` for both the overlay page and its browser WebSocket connection. If that port is busy, stop the other process using it before starting Pixel Farm.
+`FarmBot/farm-state.json` stores the shared bank, harvested-crop count, crops, and tile wetness. `FarmBot/leaderboard.json` stores planter points across runs. Back up these files before manually resetting farm progress.
+
+## Troubleshooting
+
+- **Invalid access token:** Regenerate the bot account token with the required scopes and update `OAUTH_TOKEN`.
+- **`!shop` or `!leaderboard` cannot whisper:** Reauthorize the token with `user:manage:whispers`.
+- **The 500-bit reward is disabled:** Add `bits:read` to the token and restart the bot.
+- **Port 8080 is unavailable:** Stop the other process using that port, then restart Pixel Farm.
+- **The overlay stays blank:** Check the terminal for asset or server errors and confirm the browser has internet access for Phaser.
 
 ## Built with
 
-Node.js, Twitch EventSub, WebSockets, Phaser 3, and a handful of pixel-art assets.
+Node.js, Twitch EventSub, WebSockets, Phaser 3, and pixel-art assets.

@@ -2,8 +2,68 @@
   "users": {
     "thatplantdev": {
       "username": "ThatPlantDev",
-      "points": 70,
-      "harvests": 13
+      "points": 470,
+      "harvests": 56
+    },
+    "sproutmaster": {
+      "username": "SproutMaster",
+      "points": 1742,
+      "harvests": 74
+    },
+    "glitchrunner": {
+      "username": "GlitchRunner",
+      "points": 1258,
+      "harvests": 61
+    },
+    "coffeecoder": {
+      "username": "CoffeeCoder",
+      "points": 1802,
+      "harvests": 54
+    },
+    "neonvibes": {
+      "username": "NeonVibes",
+      "points": 2082,
+      "harvests": 65
+    },
+    "spudlover": {
+      "username": "SpudLover",
+      "points": 1530,
+      "harvests": 59
+    },
+    "retrogamer99": {
+      "username": "RetroGamer99",
+      "points": 1185,
+      "harvests": 53
+    },
+    "hypetraindriver": {
+      "username": "HypeTrainDriver",
+      "points": 1422,
+      "harvests": 67
+    },
+    "twitchcat": {
+      "username": "TwitchCat",
+      "points": 1780,
+      "harvests": 63
+    },
+    "cozystreamer": {
+      "username": "CozyStreamer",
+      "points": 1042,
+      "harvests": 54
+    },
+    "zerolag": {
+      "username": "ZeroLag",
+      "points": 1239,
+      "harvests": 58
+    },
+    "pixelfarmer": {
+      "username": "PixelFarmer",
+      "points": 735,
+      "harvests": 44
+    },
+    "cropwatcher": {
+      "username": "CropWatcher",
+      "points": 1371,
+      "harvests": 60
     }
   }
 }

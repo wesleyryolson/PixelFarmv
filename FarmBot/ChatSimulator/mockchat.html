@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Pixel Farm Mock Chat</title>
+	<style>
+		:root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
+		* { box-sizing: border-box; }
+		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+		body { padding: 12px; color: #f4f1f7; background: transparent; }
+		#panel {
+			display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0;
+			padding: 10px 12px; border: 1px solid rgba(223, 206, 244, 0.15);
+			border-radius: 8px; background: rgba(20, 18, 25, 0.88);
+			box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+		}
+		#header { display: flex; align-items: center; justify-content: space-between; padding: 1px 1px 9px; border-bottom: 1px solid rgba(255,255,255,.12); }
+		#title { font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #e8d9ff; }
+		#connection { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #b7b1bd; }
+		#connection-dot { width: 7px; height: 7px; border-radius: 50%; background: #d99852; box-shadow: 0 0 7px currentColor; }
+		#connection.connected #connection-dot { color: #43db9b; background: #43db9b; }
+		#connection.disconnected #connection-dot { color: #ed6c74; background: #ed6c74; }
+		#chat-container { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; gap: 7px; min-height: 0; overflow: hidden; padding-top: 9px; }
+		.chat-line { font-size: clamp(13px, 2.4vh, 17px); line-height: 1.3; overflow-wrap: anywhere; text-shadow: 1px 1px 2px #000; animation: enter 160ms ease-out both; }
+		.user { font-weight: 750; margin-right: 5px; }
+		.badge { display: inline-block; margin-right: 5px; padding: 1px 4px; border-radius: 3px; color: white; background: #7652b5; font-size: .65em; font-weight: 800; vertical-align: 2px; }
+		.command { color: #d6b4ff; font-weight: 700; }
+		.bot-line { color: #d5d0da; }
+		.reaction { color: #ffdc75; font-weight: 700; }
+		.notice { color: #ada5b6; font-size: .9em; font-style: italic; }
+		@keyframes enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+		@media (prefers-reduced-motion: reduce) { .chat-line { animation: none; } }
+	</style>
+</head>
+<body>
+	<section id="panel" aria-label="Pixel Farm mock chat">
+		<header id="header">
+			<div id="title">Farm Chat</div>
+			<div id="connection"><span id="connection-dot"></span><span id="connection-label">Connecting</span></div>
+		</header>
+		<div id="chat-container" aria-live="polite"></div>
+	</section>
+	<script src="/ChatSimulator/simulate-chat.js"></script>
+</body>
+</html>

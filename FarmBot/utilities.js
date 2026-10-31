@@ -81,7 +81,7 @@ function ensureHarvestPuffTexture(scene, textureKey) {
 	if (scene.textures.exists(textureKey)) return;
 
 	const graphics = scene.make.graphics({ add: false });
-	graphics.fillStyle(0xffffff, 1);
+	graphics.fillStyle(0x80521b, 1);
 	// A tiny stepped shape keeps the puff crisp when Phaser scales it.
 	graphics.fillRect(1, 0, 2, 1);
 	graphics.fillRect(0, 1, 4, 2);

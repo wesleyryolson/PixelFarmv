@@ -1,19 +1,19 @@
 {
-  "bank": 920,
-  "harvestedCrops": 13,
+  "bank": 23845,
+  "harvestedCrops": 768,
   "crops": {
-    "1": {
-      "kind": "carrot",
-      "ownerLogin": "thatplantdev",
-      "ownerName": "ThatPlantDev",
-      "plantedAt": 1793272290242,
-      "growthProgressMs": 0,
-      "growthUpdatedAt": 1793272290242,
-      "readyAt": 1793272335242,
+    "1": null,
+    "2": {
+      "kind": "onion",
+      "ownerLogin": "twitchcat",
+      "ownerName": "TwitchCat",
+      "plantedAt": 1793479814595,
+      "growthProgressMs": 13440.4,
+      "growthUpdatedAt": 1793479827045,
+      "readyAt": 1793479857409.9565,
       "votes": [],
       "requiredVotes": null
     },
-    "2": null,
     "3": null,
     "4": null,
     "5": null,
@@ -24,7 +24,7 @@
   },
   "wetness": {
     "1": 0,
-    "2": 0,
+    "2": 2,
     "3": 0,
     "4": 0,
     "5": 0,
@@ -32,8 +32,5 @@
     "7": 0,
     "8": 0,
     "9": 0
-  },
-  "streamerName": "ThatPlantDev",
-  "farmName": "ThatPlantDev's farm",
-  "farmNameCustom": false
+  }
 }
