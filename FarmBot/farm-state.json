@@ -1,19 +1,9 @@
 {
-  "bank": 23845,
-  "harvestedCrops": 768,
+  "bank": 50,
+  "harvestedCrops": 0,
   "crops": {
     "1": null,
-    "2": {
-      "kind": "onion",
-      "ownerLogin": "twitchcat",
-      "ownerName": "TwitchCat",
-      "plantedAt": 1793479814595,
-      "growthProgressMs": 13440.4,
-      "growthUpdatedAt": 1793479827045,
-      "readyAt": 1793479857409.9565,
-      "votes": [],
-      "requiredVotes": null
-    },
+    "2": null,
     "3": null,
     "4": null,
     "5": null,
@@ -24,7 +14,7 @@
   },
   "wetness": {
     "1": 0,
-    "2": 2,
+    "2": 0,
     "3": 0,
     "4": 0,
     "5": 0,
