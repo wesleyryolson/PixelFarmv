@@ -7,10 +7,11 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '.env' });
-// Optional: set OPENAI_API_KEY in .env.local or .env to generate a modifier and crop tint.
+// Optional: set OPENROUTER_API_KEY or OPENAI_API_KEY in .env.local or .env to generate crop modifiers.
 
 const BOT_USER_ID = process.env.BOT_USER_ID; // This is the User ID of the chat bot
 const OAUTH_TOKEN = process.env.OAUTH_TOKEN; // Also needs user:manage:whispers for private !shop replies
+const CHANNEL_OWNER_OAUTH_TOKEN = process.env.CHANNEL_OWNER_OAUTH_TOKEN?.trim();
 const CLIENT_ID = process.env.CLIENT_ID;
 
 
@@ -19,6 +20,8 @@ const CHAT_CHANNEL_USER_ID = process.env.CHAT_CHANNEL_USER_ID;
 const EVENTSUB_WEBSOCKET_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const LOCAL_WEBSOCKET_PORT = 8080;
 const STARTING_BANK_BALANCE = 1000;
+const MOCK_RESET_BANK_BALANCE = 100;
+const DYNAMIC_HARVEST_ENABLED = /^(1|true|yes|on)$/i.test(process.env.DYNAMIC_HARVEST?.trim() || '');
 const ACTIVE_CHATTER_WINDOW_MS = 5 * 60 * 1000;
 const WATER_COMMAND_COOLDOWN_MS = 15_000;
 const MAX_TILE_WETNESS = 15;
@@ -29,12 +32,12 @@ const FARM_STATE_PATH = fileURLToPath(new URL('./farm-state.json', import.meta.u
 const LEADERBOARD_PATH = fileURLToPath(new URL('./leaderboard.json', import.meta.url));
 const CROP_CATALOG = {
 	potato: { name: 'Potato', price: 0, value: 10, growthMs: 30_000 },
-	carrot: { name: 'Carrot', price: 75, value: 30, growthMs: 45_000 },
-	onion: { name: 'Onion', price: 250, value: 100, growthMs: 60_000 }
+	carrot: { name: 'Carrot', price: 75, value: 30, growthMs: 60_000 },
+	onion: { name: 'Onion', price: 150, value: 100, growthMs: 120_000 }
 };
 const VEGETABLES_PER_HARVEST = 2;
 const SHINY_VALUE_MULTIPLIER = 5;
-const SHINY_SPECIAL_MODIFIER_CHANCE = 0.3;
+const SHINY_SPECIAL_MODIFIER_CHANCE = 0.5;
 const SPECIAL_MODIFIER_VALUE_MULTIPLIER = 5;
 const AVERAGE_VEGETABLE_WEIGHT_KG = { potato: 0.2, carrot: 0.2, onion: 0.2 };
 const LOCAL_CROP_MODIFIERS = [
@@ -51,13 +54,17 @@ const MOCK_CHAT_USERS = [
 const MOCK_ACTIVITY_INTERVAL_MS = { 1: 7000, 2: 4000, 3: 2200, 4: 900, 5: 600, 6: 400, 7: 250, 8: 125 };
 const MOCK_ACTIVITY_NAMES = ['off', 'low', 'medium', 'high', 'demo', 'fast', 'faster', 'rapid', 'chaos'];
 let farmState = createDefaultFarmState();
-let leaderboard = { users: {} };
+let leaderboard = createEmptyLeaderboard();
 let persistentDataReady = false;
 let tokenScopes = new Set();
-let debugShinyChance = 0.1;
+let oauthUserId = null;
+let channelOwnerTokenReady = false;
+let debugShinyChance = 0.15;
 let debugActiveChatterCount = 1;
 let debugIslandSize = null;
 let mockActivityLevel = 2;
+let mockBitsEnabled = false;
+let mockSubsEnabled = false;
 const recentChatters = new Map();
 const waterCommandCooldowns = new Map();
 let chatCommandQueue = Promise.resolve();
@@ -71,16 +78,26 @@ function createDefaultFarmState() {
 	return {
 		bank: STARTING_BANK_BALANCE,
 		harvestedCrops: 0,
+		islandLevel: 1,
 		crops: Object.fromEntries(Array.from({ length: 9 }, (_, index) => [index + 1, null])),
-		wetness: Object.fromEntries(Array.from({ length: 9 }, (_, index) => [index + 1, 0]))
+		wetness: Object.fromEntries(Array.from({ length: 9 }, (_, index) => [index + 1, 0])),
+		subscribers: []
 	};
 }
 
-function getIslandLevel(harvestCount = farmState.harvestedCrops) {
+function createEmptyLeaderboard(streamId = null) {
+	return { streamId, users: {}, mostValuableCrop: null };
+}
+
+function getIslandLevelForHarvestCount(harvestCount) {
 	const level = harvestCount >= ISLAND_UPGRADE_HARVESTS[3]
 		? 3
 		: harvestCount >= ISLAND_UPGRADE_HARVESTS[2] ? 2 : 1;
 	return Math.min(MAX_ISLAND_LEVEL, level);
+}
+
+function getIslandLevel() {
+	return farmState.islandLevel || getIslandLevelForHarvestCount(farmState.harvestedCrops);
 }
 
 function rollVegetableWeightKg() {
@@ -98,18 +115,25 @@ function getLocalCropModifier() {
 }
 
 async function generateCropModifier() {
-	const apiKey = process.env.OPENAI_API_KEY?.trim();
-	if (!apiKey) return getLocalCropModifier();
+	const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+	const openAiKey = process.env.OPENAI_API_KEY?.trim();
+	const provider = openAiKey ? 'openai' : openRouterKey ? 'openrouter' : null;
+	const apiKey = provider === 'openai' ? openAiKey : openRouterKey;
+	if (!provider) return getLocalCropModifier();
+	const endpoint = provider === 'openrouter'
+		? 'https://openrouter.ai/api/v1/chat/completions'
+		: 'https://api.openai.com/v1/chat/completions';
+	const model = provider === 'openrouter' ? 'openai/gpt-4o-mini' : 'gpt-4o-mini';
 
 	try {
-		const response = await fetch('https://api.openai.com/v1/chat/completions', {
+		const response = await fetch(endpoint, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				'Authorization': `Bearer ${apiKey}`
 			},
 			body: JSON.stringify({
-				model: 'gpt-4o-mini',
+				model,
 				messages: [
 					{
 						role: 'system',
@@ -122,19 +146,19 @@ async function generateCropModifier() {
 			}),
 			signal: AbortSignal.timeout(8000)
 		});
-		if (!response.ok) throw new Error(`OpenAI returned HTTP ${response.status}`);
+		if (!response.ok) throw new Error(`${provider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} returned HTTP ${response.status}`);
 
 		const data = await response.json();
 		const result = JSON.parse(data.choices?.[0]?.message?.content || '{}');
 		if (typeof result.modifier !== 'string' || !/^[a-zA-Z]{1,12}$/.test(result.modifier)) {
-			throw new Error('OpenAI returned an invalid modifier');
+			throw new Error(`${provider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} returned an invalid modifier`);
 		}
 		if (typeof result.hexColor !== 'string' || !/^0x[\da-fA-F]{6}$/.test(result.hexColor)) {
-			throw new Error('OpenAI returned an invalid hex color');
+			throw new Error(`${provider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} returned an invalid hex color`);
 		}
 		return { modifier: result.modifier.toUpperCase(), hexColor: result.hexColor.toLowerCase() };
 	} catch (error) {
-		console.warn(`Crop modifier generation failed; using a local preset: ${error.message}`);
+		console.warn(`${provider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} crop modifier generation failed; using a local preset: ${error.message}`);
 		return getLocalCropModifier();
 	}
 }
@@ -162,7 +186,7 @@ async function calculateHarvestRewards(kind, baseCropValue) {
 		const cropModifier = cropModifiers[index];
 		const shinyMultiplier = shiny ? SHINY_VALUE_MULTIPLIER : 1;
 		const specialModifierMultiplier = cropModifier?.modifier ? SPECIAL_MODIFIER_VALUE_MULTIPLIER : 1;
-		const value = Math.round(baseValue * Math.max(1, weightKg / averageWeight) * shinyMultiplier * specialModifierMultiplier);
+		const value = Math.round(baseValue * Math.max(1, weightKg / averageWeight) * shinyMultiplier * specialModifierMultiplier * getPlantWorthMultiplier());
 		const pointsAfterItem = Math.floor((cumulativeValue + value) * 0.2);
 		const pointsForItem = pointsAfterItem - cumulativePoints;
 		const bankReturn = value - pointsForItem;
@@ -186,7 +210,63 @@ function getTileCoordinates(tile) {
 
 function getGrowthMultiplier(tile) {
 	const wetness = Math.max(0, Math.min(MAX_TILE_WETNESS, Number(farmState.wetness?.[tile]) || 0));
-	return 1 + 4 * wetness / MAX_TILE_WETNESS;
+	return (1 + 4 * wetness / MAX_TILE_WETNESS) * getStreamGrowthMultiplier();
+}
+
+function getSubscriberCount() {
+	return Array.isArray(farmState.subscribers) ? farmState.subscribers.length : 0;
+}
+
+function getStreamGrowthMultiplier() {
+	return 1 + getSubscriberCount() * 0.1;
+}
+
+function getPlantWorthMultiplier() {
+	return 1 + getSubscriberCount() * 0.05;
+}
+
+function updateCropReadyTimes(now = Date.now()) {
+	for (const tile of Object.keys(farmState.crops)) {
+		const crop = farmState.crops[tile];
+		if (!crop) continue;
+		const duration = CROP_CATALOG[crop.kind].growthMs;
+		crop.readyAt = now + Math.max(0, duration - crop.growthProgressMs) / getGrowthMultiplier(tile);
+	}
+}
+
+async function registerNewSubscriber(userId, username, isMockSimulator = false) {
+	const id = String(userId || '').trim();
+	if (!id || (farmState.subscribers || []).some((subscriber) => subscriber.id === id)) return false;
+	const displayName = String(username || 'New subscriber').trim() || 'New subscriber';
+	const now = Date.now();
+	for (const tile of Object.keys(farmState.crops)) advanceCropGrowth(tile, now);
+	farmState.subscribers = [...(farmState.subscribers || []), { id, username: String(username || 'New subscriber').trim() || 'New subscriber' }];
+	updateCropReadyTimes(now);
+	await writeJsonFile(FARM_STATE_PATH, farmState);
+	const subscriberCount = getSubscriberCount();
+	broadcastToBrowsers({
+		type: 'farm.subscribed',
+		username: displayName,
+		subscriberCount,
+		flowerFrame: Math.min(3, subscriberCount - 1),
+		growthMultiplier: getStreamGrowthMultiplier(),
+		plantWorthMultiplier: getPlantWorthMultiplier()
+	});
+	broadcastFarmState();
+	const announcement = `@${displayName} just subbed for the first time! +10% growth speed +5% crop value!`;
+	await announceFarmEvent(announcement, isMockSimulator);
+	console.log(`New subscriber ${displayName}: ${subscriberCount} this stream; crop growth x${getStreamGrowthMultiplier().toFixed(2)}, crop value x${getPlantWorthMultiplier().toFixed(2)}.`);
+	return true;
+}
+
+function enqueueNewSubscriber(event) {
+	const subscriber = event || {};
+	chatCommandQueue = chatCommandQueue
+		.then(async () => {
+			await waitForHarvestAnimation();
+			return registerNewSubscriber(subscriber.user_id, subscriber.user_name || subscriber.user_login);
+		})
+		.catch((error) => console.error('Failed to process new subscriber:', error));
 }
 
 function getCropGrowthSnapshot(tile, crop, now = Date.now()) {
@@ -209,14 +289,14 @@ function advanceCropGrowth(tile, now = Date.now()) {
 }
 
 const httpServer = createServer(async (request, response) => {
-	if (request.method !== 'GET' || !['/', '/index.html', '/utilities.js', '/chat-simulator', '/ChatSimulator/mockchat.html', '/ChatSimulator/simulate-chat.js', '/assets/1x1.png', '/assets/2x2.png', '/assets/2x2signs.png', '/assets/Carrot.png', '/assets/Carrot1.png', '/assets/Carrot2.png', '/assets/Carrot3.png', '/assets/CarrotSeeds.png', '/assets/Onion.png', '/assets/Onion1.png', '/assets/Onion2.png', '/assets/Onion3.png', '/assets/OnionSeeds.png', '/assets/Potato1.png', '/assets/Potato2.png', '/assets/Potato3.png', '/assets/PotatoSeeds.png', '/assets/emptySack.png', '/assets/carrot.png', '/assets/Potato.png', '/assets/coin.png', '/assets/plantemoji.png', '/assets/WetOverlay.png', '/assets/wateringCan.png', '/assets/PixelifySans-VariableFont_wght.ttf', '/assets/yoster.ttf'].includes(request.url)) {
+	if (request.method !== 'GET' || !['/', '/index.html', '/utilities.js', '/chat-simulator', '/ChatSimulator/mockchat.html', '/ChatSimulator/simulate-chat.js', '/assets/1x1.png', '/assets/1x1flowers.png', '/assets/2x2.png', '/assets/2x2flowers.png', '/assets/2x2signs.png', '/assets/Carrot.png', '/assets/Carrot1.png', '/assets/Carrot2.png', '/assets/Carrot3.png', '/assets/CarrotSeeds.png', '/assets/Onion.png', '/assets/Onion1.png', '/assets/Onion2.png', '/assets/Onion3.png', '/assets/OnionSeeds.png', '/assets/Potato1.png', '/assets/Potato2.png', '/assets/Potato3.png', '/assets/PotatoSeeds.png', '/assets/emptySack.png', '/assets/carrot.png', '/assets/Potato.png', '/assets/coin.png', '/assets/plantemoji.png', '/assets/WetOverlay.png', '/assets/wateringCan.png', '/assets/PixelifySans-VariableFont_wght.ttf', '/assets/yoster.ttf'].includes(request.url)) {
 		response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
 		response.end('Not found');
 		return;
 	}
 
 	try {
-		const isPngAsset = ['/assets/1x1.png', '/assets/2x2.png', '/assets/2x2signs.png', '/assets/Carrot.png', '/assets/Carrot1.png', '/assets/Carrot2.png', '/assets/Carrot3.png', '/assets/CarrotSeeds.png', '/assets/Onion.png', '/assets/Onion1.png', '/assets/Onion2.png', '/assets/Onion3.png', '/assets/OnionSeeds.png', '/assets/Potato1.png', '/assets/Potato2.png', '/assets/Potato3.png', '/assets/PotatoSeeds.png', '/assets/emptySack.png', '/assets/carrot.png', '/assets/Potato.png', '/assets/coin.png', '/assets/plantemoji.png', '/assets/WetOverlay.png', '/assets/wateringCan.png'].includes(request.url);
+		const isPngAsset = ['/assets/1x1.png', '/assets/1x1flowers.png', '/assets/2x2.png', '/assets/2x2flowers.png', '/assets/2x2signs.png', '/assets/Carrot.png', '/assets/Carrot1.png', '/assets/Carrot2.png', '/assets/Carrot3.png', '/assets/CarrotSeeds.png', '/assets/Onion.png', '/assets/Onion1.png', '/assets/Onion2.png', '/assets/Onion3.png', '/assets/OnionSeeds.png', '/assets/Potato1.png', '/assets/Potato2.png', '/assets/Potato3.png', '/assets/PotatoSeeds.png', '/assets/emptySack.png', '/assets/carrot.png', '/assets/Potato.png', '/assets/coin.png', '/assets/plantemoji.png', '/assets/WetOverlay.png', '/assets/wateringCan.png'].includes(request.url);
 		const isPixelifyFont = request.url === '/assets/PixelifySans-VariableFont_wght.ttf';
 		const isYosterFont = request.url === '/assets/yoster.ttf';
 		const isUtility = request.url === '/utilities.js';
@@ -227,7 +307,9 @@ const httpServer = createServer(async (request, response) => {
 			'/ChatSimulator/simulate-chat.js': './ChatSimulator/simulate-chat.js'
 		};
 		const assetFiles = {
+			'/assets/1x1flowers.png': './assets/1x1flowers.png',
 			'/assets/2x2.png': './assets/2x2.png',
+			'/assets/2x2flowers.png': './assets/2x2flowers.png',
 			'/assets/2x2signs.png': './assets/2x2signs.png',
 			'/assets/Carrot.png': './assets/Carrot.png',
 			'/assets/Carrot1.png': './assets/Carrot1.png',
@@ -281,8 +363,12 @@ browserServer.on('connection', (client) => {
 				finishHarvestCommandPause(message.harvestId);
 			} else if (message.type === 'mock.command' && mockBrowserClients.has(client)) {
 				enqueueMockCommand(message);
+			} else if (message.type === 'mock.cheer' && mockBrowserClients.has(client)) {
+				enqueueMockCheer(message);
+			} else if (message.type === 'mock.sub' && mockBrowserClients.has(client)) {
+				enqueueMockSubscription(message);
 			} else if (message.type === 'debug.settings.update') {
-				if (message.shinyChance === 0.1 || message.shinyChance === 0.5) {
+				if (message.shinyChance === 0.15 || message.shinyChance === 0.5) {
 					debugShinyChance = message.shinyChance;
 				}
 				if (message.activeChatters === 1 || message.activeChatters === 50) {
@@ -325,7 +411,10 @@ function createDebugSettingsMessage() {
 		type: 'debug.settings',
 		shinyChance: debugShinyChance,
 		activeChatters: debugActiveChatterCount,
-		islandLevel: debugIslandSize
+		islandLevel: debugIslandSize,
+		dynamicHarvest: DYNAMIC_HARVEST_ENABLED,
+		mockBitsEnabled,
+		mockSubsEnabled
 	};
 }
 
@@ -352,20 +441,33 @@ function setMockActivityLevel(level) {
 	return true;
 }
 
+async function resetMockFarm() {
+	farmState = {
+		...createDefaultFarmState(),
+		bank: MOCK_RESET_BANK_BALANCE,
+		islandLevel: 1
+	};
+	debugIslandSize = null;
+	await writeJsonFile(FARM_STATE_PATH, farmState);
+	broadcastDebugSettings();
+	broadcastFarmState();
+	console.log('Mock farm reset: 1x1 island, 100g, empty tiles. Leaderboard was kept.');
+}
+
 function startMockActivityTerminalControls() {
-	console.log('Mock controls: mock status | mock off | mock on | mock activity 0-8 | mock shiny | mock size | mock chatters | mock help');
+	console.log('Mock controls: mock status | mock off | mock on | mock activity 0-8 | mock shiny | mock size | mock chatters | mock bits | mock subs | mock events | mock reset | mock help');
 	if (!process.stdin.isTTY) return;
 	const terminal = createInterface({ input: process.stdin, output: process.stdout, prompt: 'farmbot> ' });
-	terminal.on('line', (rawLine) => {
+	terminal.on('line', async (rawLine) => {
 		const [root, action, value] = rawLine.trim().toLowerCase().split(/\s+/);
 		if (root !== 'mock' || action === 'help') {
-			console.log('Commands: mock status | mock off/on | mock activity 0-8 | mock shiny | mock size | mock chatters');
+			console.log('Commands: mock status | mock off/on | mock activity 0-8 | mock shiny | mock size | mock chatters | mock bits | mock subs | mock events | mock reset');
 		} else if (action === 'off') {
 			setMockActivityLevel(0);
 		} else if (action === 'on') {
 			setMockActivityLevel(mockActivityLevel || 2);
 		} else if (action === 'shiny') {
-			debugShinyChance = debugShinyChance === 0.1 ? 0.5 : 0.1;
+			debugShinyChance = debugShinyChance === 0.15 ? 0.5 : 0.15;
 			broadcastDebugSettings();
 			console.log(`Mock shiny chance: ${Math.round(debugShinyChance * 100)}%.`);
 		} else if (action === 'size') {
@@ -377,14 +479,36 @@ function startMockActivityTerminalControls() {
 			debugActiveChatterCount = debugActiveChatterCount === 1 ? 50 : 1;
 			broadcastDebugSettings();
 			console.log(`Mock active chatters: ${debugActiveChatterCount}.`);
+		} else if (action === 'bits') {
+			mockBitsEnabled = !mockBitsEnabled;
+			broadcastDebugSettings();
+			console.log(`Mock random bit donations: ${mockBitsEnabled ? 'on' : 'off'}.`);
+		} else if (action === 'subs') {
+			mockSubsEnabled = !mockSubsEnabled;
+			broadcastDebugSettings();
+			console.log(`Mock random subscriptions: ${mockSubsEnabled ? 'on' : 'off'}.`);
+		} else if (action === 'events') {
+			const enabled = !(mockBitsEnabled && mockSubsEnabled);
+			mockBitsEnabled = enabled;
+			mockSubsEnabled = enabled;
+			broadcastDebugSettings();
+			console.log(`Mock random bit donations and subscriptions: ${enabled ? 'on' : 'off'}.`);
+		} else if (action === 'reset') {
+			setMockActivityLevel(0);
+			try {
+				await chatCommandQueue;
+				await resetMockFarm();
+			} catch (error) {
+				console.error('Mock farm reset failed:', error);
+			}
 		} else if (action === 'status') {
 			const status = createMockActivityMessage();
 			console.log(`Mock chat is ${status.activityName}${status.enabled ? ` (about one command every ${status.intervalMs} ms)` : ''}.`);
-			console.log(`Shiny chance: ${Math.round(debugShinyChance * 100)}%; island preview: ${debugIslandSize ? `${debugIslandSize}x${debugIslandSize}` : `farm size (${getIslandLevel()}x${getIslandLevel()})`}; active chatters: ${debugActiveChatterCount}.`);
+			console.log(`Shiny chance: ${Math.round(debugShinyChance * 100)}%; island preview: ${debugIslandSize ? `${debugIslandSize}x${debugIslandSize}` : `farm size (${getIslandLevel()}x${getIslandLevel()})`}; active chatters: ${debugActiveChatterCount}; mock bits: ${mockBitsEnabled ? 'on' : 'off'}; mock subs: ${mockSubsEnabled ? 'on' : 'off'}.`);
 		} else if (action === 'activity' && /^\d+$/.test(value || '') && setMockActivityLevel(Number(value))) {
 			// Activity level was updated and sent to connected simulator pages.
 		} else {
-			console.log('Use: mock status | mock off/on | mock activity 0-8 | mock shiny | mock size | mock chatters | mock help');
+			console.log('Use: mock status | mock off/on | mock activity 0-8 | mock shiny | mock size | mock chatters | mock bits | mock subs | mock events | mock reset | mock help');
 		}
 		terminal.prompt();
 	});
@@ -417,6 +541,37 @@ function enqueueMockCommand(message) {
 		.catch((error) => console.error('Failed to process mock chat command:', error));
 }
 
+function enqueueMockCheer(message) {
+	if (!mockBitsEnabled) return;
+	const requestedName = String(message.username || '').trim();
+	const username = MOCK_CHAT_USERS.find((candidate) => candidate.toLowerCase() === requestedName.toLowerCase());
+	const bits = Number(message.bits);
+	if (!username || !Number.isSafeInteger(bits) || bits <= 500 || bits > 10_000) return;
+	chatCommandQueue = chatCommandQueue
+		.then(async () => {
+			await waitForHarvestAnimation();
+			return growAllCropsImmediately(username, bits, true);
+		})
+		.catch((error) => console.error('Failed to process mock cheer:', error));
+}
+
+function enqueueMockSubscription(message) {
+	if (!mockSubsEnabled) return;
+	const requestedName = String(message.username || '').trim();
+	const username = MOCK_CHAT_USERS.find((candidate) => candidate.toLowerCase() === requestedName.toLowerCase());
+	if (!username) return;
+	const requestedId = String(message.subscriberId || '');
+	const subscriberId = /^mock-subscriber-[\w-]{1,80}$/.test(requestedId)
+		? requestedId
+		: `mock-${username.toLowerCase()}`;
+	chatCommandQueue = chatCommandQueue
+		.then(async () => {
+			await waitForHarvestAnimation();
+			return registerNewSubscriber(subscriberId, username, true);
+		})
+		.catch((error) => console.error('Failed to process mock subscription:', error));
+}
+
 function beginHarvestCommandPause() {
 	if (activeHarvestAnimationId !== null) return activeHarvestAnimationId;
 	const hasOverlay = [...browserServer.clients].some((client) => client.readyState === WebSocket.OPEN && !mockBrowserClients.has(client));
@@ -446,6 +601,24 @@ async function waitForHarvestAnimation() {
 	while (harvestCommandGate) await harvestCommandGate;
 }
 
+function queueStreamLeaderboardReset(streamId, reason) {
+	chatCommandQueue = chatCommandQueue
+		.then(async () => {
+			leaderboard = createEmptyLeaderboard(streamId);
+			await writeJsonFile(LEADERBOARD_PATH, leaderboard);
+			if (farmState.subscribers.length) {
+				const now = Date.now();
+				for (const tile of Object.keys(farmState.crops)) advanceCropGrowth(tile, now);
+				farmState.subscribers = [];
+				updateCropReadyTimes(now);
+				await writeJsonFile(FARM_STATE_PATH, farmState);
+				broadcastFarmState();
+			}
+			console.log(`Stream leaderboard reset (${reason}).`);
+		})
+		.catch((error) => console.error('Failed to reset stream leaderboard:', error));
+}
+
 async function readJsonFile(path, fallback) {
 	try {
 		return JSON.parse(await readFile(path, 'utf8'));
@@ -463,16 +636,27 @@ async function writeJsonFile(path, value) {
 
 async function loadPersistentData() {
 	const savedFarm = await readJsonFile(FARM_STATE_PATH, createDefaultFarmState());
-	const savedLeaderboard = await readJsonFile(LEADERBOARD_PATH, { users: {} });
+	const savedLeaderboard = await readJsonFile(LEADERBOARD_PATH, createEmptyLeaderboard());
 	const priorHarvestCount = Object.values(savedLeaderboard?.users || {})
 		.reduce((total, user) => total + (Number.isSafeInteger(user.harvests) ? user.harvests : 0), 0);
+	const harvestedCrops = Number.isSafeInteger(savedFarm.harvestedCrops) && savedFarm.harvestedCrops >= 0
+		? savedFarm.harvestedCrops
+		: priorHarvestCount;
+	const savedIslandLevel = Number.isInteger(savedFarm.islandLevel) && savedFarm.islandLevel >= 1
+		? Math.min(MAX_ISLAND_LEVEL, savedFarm.islandLevel)
+		: getIslandLevelForHarvestCount(harvestedCrops);
 	farmState = {
 		bank: Number.isSafeInteger(savedFarm.bank) && savedFarm.bank >= 0 ? savedFarm.bank : STARTING_BANK_BALANCE,
-		harvestedCrops: Number.isSafeInteger(savedFarm.harvestedCrops) && savedFarm.harvestedCrops >= 0
-			? savedFarm.harvestedCrops
-			: priorHarvestCount,
+		harvestedCrops,
+		islandLevel: savedIslandLevel,
 		crops: { ...createDefaultFarmState().crops, ...(savedFarm.crops || {}) },
-		wetness: { ...createDefaultFarmState().wetness, ...(savedFarm.wetness || {}) }
+		wetness: { ...createDefaultFarmState().wetness, ...(savedFarm.wetness || {}) },
+		subscribers: Array.isArray(savedFarm.subscribers)
+			? savedFarm.subscribers.filter((subscriber) => subscriber && typeof subscriber.id === 'string').map((subscriber) => ({
+				id: subscriber.id,
+				username: typeof subscriber.username === 'string' ? subscriber.username : 'New subscriber'
+			}))
+			: []
 	};
 	for (const tile of Object.keys(farmState.wetness)) {
 		const wetness = Number(farmState.wetness[tile]);
@@ -500,9 +684,16 @@ async function loadPersistentData() {
 		crop.growthProgressMs = Math.max(0, Math.min(duration, crop.growthProgressMs));
 		crop.readyAt = now + Math.max(0, duration - crop.growthProgressMs) / getGrowthMultiplier(tile);
 	}
+	const hasSavedStreamId = typeof savedLeaderboard?.streamId === 'string' && savedLeaderboard.streamId.length > 0;
+	const savedStreamId = hasSavedStreamId ? savedLeaderboard.streamId : `session-${Date.now()}`;
 	leaderboard = savedLeaderboard && savedLeaderboard.users && typeof savedLeaderboard.users === 'object'
-		? savedLeaderboard
-		: { users: {} };
+		? {
+			...savedLeaderboard,
+			streamId: savedStreamId,
+			users: hasSavedStreamId ? savedLeaderboard.users : {},
+			mostValuableCrop: hasSavedStreamId ? savedLeaderboard.mostValuableCrop || null : null
+		}
+		: createEmptyLeaderboard(savedStreamId);
 	persistentDataReady = true;
 	await writeJsonFile(FARM_STATE_PATH, farmState);
 	await writeJsonFile(LEADERBOARD_PATH, leaderboard);
@@ -522,6 +713,9 @@ function createFarmStateMessage() {
 		bank: farmState.bank,
 		harvestedCrops: farmState.harvestedCrops,
 		level: getIslandLevel(),
+		subscriberCount: getSubscriberCount(),
+		growthMultiplier: getStreamGrowthMultiplier(),
+		plantWorthMultiplier: getPlantWorthMultiplier(),
 		wetness: farmState.wetness,
 		crops
 	};
@@ -536,7 +730,7 @@ function getActiveChatterCount() {
 	for (const [login, lastMessageAt] of recentChatters) {
 		if (lastMessageAt < cutoff) recentChatters.delete(login);
 	}
-	return debugActiveChatterCount;
+	return Math.max(debugActiveChatterCount, recentChatters.size);
 }
 
 function isChannelOwner(event) {
@@ -551,10 +745,10 @@ function isChannelOwner(event) {
 }
 
 function getRequiredHarvestVotes(activeChatters) {
+	if (!DYNAMIC_HARVEST_ENABLED) return 1;
 	const chatterCount = Math.max(0, Number(activeChatters) || 0);
 	if (chatterCount < 10) return 1;
-	if (chatterCount <= 50) return 5;
-	return 5 + Math.ceil((chatterCount - 50) / 10);
+	return Math.min(5, 2 + Math.floor(Math.max(0, chatterCount - 50) / 100));
 }
 
 function cropName(kind) {
@@ -568,7 +762,27 @@ function normalizeCropName(value) {
 
 function formatShopMessage() {
 	const level = getIslandLevel();
-	return `Farm shop | Shared bank: $${farmState.bank}. Potato: FREE (value $10); Carrot: $30; Onion: $100. Island ${level}x${level}; plant with !plant potato 1 (tiles 1-${level ** 2}).`;
+	return `🌱Farm shop🌱 | Shared bank: $${farmState.bank}. •Potato: FREE; •Carrot: $75; •Onion: $150. Plant with !plant potato 1 (tiles 1-${level ** 2}). !Leaderboard to see who has the most farm points!`;
+}
+
+function formatStreamLeaderboard() {
+	const topFarmers = Object.entries(leaderboard.users)
+		.sort((a, b) => (Number(b[1].points) || 0) - (Number(a[1].points) || 0))
+		.slice(0, 3);
+	const pointsLine = topFarmers.length
+		? `✨Top farm points: ${topFarmers.map(([login, user], index) => `${index + 1}. ${user.username || login} ${Number(user.points) || 0} pts`).join(' | ')}`
+		: '✨Top farm points: none yet';
+	const bestCrop = leaderboard.mostValuableCrop;
+	if (!bestCrop) return `${pointsLine}. 🌱Most valuable crop: none yet.`;
+	const weightKg = Number(bestCrop.weightKg) || 0;
+	const modifiers = [
+		bestCrop.modifier,
+		bestCrop.shiny ? 'SHINY' : null,
+		weightKg >= 1 ? 'MASSIVE' : weightKg >= 0.3 ? 'CHUNKY' : null
+	].filter(Boolean);
+	const modifierText = modifiers.length ? modifiers.join(', ') : 'no modifiers';
+	const cropLine = `🌱Most valuable crop: ${bestCrop.username} planted ${weightKg.toFixed(2)} kg ${cropName(bestCrop.kind)} (${modifierText}, ${Number(bestCrop.value) || 0}g).`;
+	return `${pointsLine}. ${cropLine}`;
 }
 
 async function sendPrivateMessage(toUserId, message) {
@@ -604,6 +818,18 @@ async function sendFarmReply(event, chatterLogin, message, whisper = false) {
 	return sendChatMessage(message);
 }
 
+async function announceFarmEvent(message, isMockSimulator = false) {
+	if (isMockSimulator) {
+		broadcastToBrowsers({ type: 'chat.message', direction: 'outgoing', message, simulated: true });
+		return;
+	}
+	try {
+		await sendChatMessage(message);
+	} catch (error) {
+		console.error('Failed to announce farm event in chat:', error.message);
+	}
+}
+
 var websocketSessionID;
 
 // Start executing the bot from here
@@ -611,9 +837,13 @@ var websocketSessionID;
 	await loadPersistentData();
 	// Verify that the authentication is valid
 	await getAuth();
+	channelOwnerTokenReady = await validateChannelOwnerToken();
 
 	// Start WebSocket client and register handlers
 	const websocketClient = startWebSocketClient();
+	if (channelOwnerTokenReady && oauthUserId !== String(CHAT_CHANNEL_USER_ID)) {
+		startChannelOwnerSubscriptionClient(CHANNEL_OWNER_OAUTH_TOKEN);
+	}
 })();
 
 // WebSocket will persist the application loop until you exit the program forcefully
@@ -638,10 +868,55 @@ async function getAuth() {
 
 	const data = await response.json();
 	tokenScopes = new Set(data.scopes || []);
+	oauthUserId = String(data.user_id || '');
 	console.log('Validated token.');
 	if (!tokenScopes.has('user:manage:whispers')) {
 		console.warn('The token is missing user:manage:whispers; !shop and !leaderboard cannot send private Twitch whispers until it is reauthorized with that scope.');
 	}
+}
+
+async function validateChannelOwnerToken() {
+	if (!CHANNEL_OWNER_OAUTH_TOKEN) return false;
+	try {
+		const response = await fetch('https://id.twitch.tv/oauth2/validate', {
+			method: 'GET',
+			headers: { 'Authorization': `OAuth ${CHANNEL_OWNER_OAUTH_TOKEN}` }
+		});
+		if (response.status !== 200) throw new Error(`token validation returned HTTP ${response.status}`);
+		const data = await response.json();
+		const scopes = new Set(data.scopes || []);
+		if (String(data.user_id || '') !== String(CHAT_CHANNEL_USER_ID)) {
+			throw new Error('token does not belong to CHAT_CHANNEL_USER_ID');
+		}
+		if (!scopes.has('channel:read:subscriptions')) {
+			throw new Error('token is missing channel:read:subscriptions');
+		}
+		return true;
+	} catch (error) {
+		console.warn(`Real subscriber flowers are disabled: CHANNEL_OWNER_OAUTH_TOKEN ${error.message}.`);
+		return false;
+	}
+}
+
+function startChannelOwnerSubscriptionClient(accessToken) {
+	const client = new WebSocket(EVENTSUB_WEBSOCKET_URL);
+	client.on('error', (error) => console.error('Channel owner EventSub WebSocket error:', error.message));
+	client.on('open', () => console.log('Channel owner EventSub WebSocket connected.'));
+	client.on('message', async (rawMessage) => {
+		try {
+			const data = JSON.parse(rawMessage.toString());
+			if (data.metadata?.message_type === 'session_welcome') {
+				const sessionId = data.payload.session.id;
+				const response = await subscribeToChannelSubscribe(sessionId, accessToken);
+				if (!response) console.warn('Real subscriber flowers could not be enabled through the channel owner EventSub connection.');
+			} else if (data.metadata?.message_type === 'notification' && data.metadata.subscription_type === 'channel.subscribe') {
+				enqueueNewSubscriber(data.payload.event);
+			}
+		} catch (error) {
+			console.error('Failed to initialize channel owner EventSub:', error.message);
+		}
+	});
+	return client;
 }
 
 function startWebSocketClient() {
@@ -698,6 +973,20 @@ function handleWebSocketMessage(data) {
 					}
 
 					break;
+				case 'stream.online': {
+					const streamId = String(data.payload.event.id || '');
+					if (streamId && streamId !== leaderboard.streamId) {
+						queueStreamLeaderboardReset(streamId, 'new stream started');
+					}
+					break;
+				}
+				case 'stream.offline':
+					queueStreamLeaderboardReset(null, 'stream ended');
+					break;
+				case 'channel.subscribe': {
+					enqueueNewSubscriber(data.payload.event);
+					break;
+				}
 				case 'channel.cheer': {
 					const cheerEvent = data.payload.event;
 					const bits = Number(cheerEvent.bits) || 0;
@@ -719,7 +1008,7 @@ function handleWebSocketMessage(data) {
 async function handleFarmCommand(event, text, chatterLogin, activeChattersAtMessage) {
 	const chatterName = event.chatter_user_name || event.chatter_user_login || chatterLogin;
 	if (/^!shop$/i.test(text)) {
-		await sendFarmReply(event, chatterLogin, formatShopMessage(), true);
+		await sendFarmReply(event, chatterLogin, formatShopMessage(), !isChannelOwner(event));
 		return;
 	}
 
@@ -734,13 +1023,7 @@ async function handleFarmCommand(event, text, chatterLogin, activeChattersAtMess
 	}
 
 	if (/^!leaderboard$/i.test(text)) {
-		const top = Object.entries(leaderboard.users)
-			.sort((a, b) => (Number(b[1].points) || 0) - (Number(a[1].points) || 0))
-			.slice(0, 3);
-		const message = top.length
-			? `Top farm scores: ${top.map(([login, user], index) => `${index + 1}. ${user.username || login} ${Number(user.points) || 0} pts`).join(' | ')}`
-			: 'Farm leaderboard: no harvest points yet.';
-		await sendFarmReply(event, chatterLogin, message.slice(0, 490), true);
+		await sendFarmReply(event, chatterLogin, formatStreamLeaderboard().slice(0, 490), !isChannelOwner(event));
 		return;
 	}
 
@@ -799,7 +1082,7 @@ async function waterTile(event, chatterLogin, tile) {
 
 async function buyCrop(event, chatterLogin, chatterName, kind, tile) {
 	if (!kind) {
-		await sendFarmReply(event, chatterLogin, `@${chatterLogin} crops for sale: Potato (free), Carrot ($30), Onion ($100).`);
+		await sendFarmReply(event, chatterLogin, `@${chatterLogin} crops for sale: Potato (free), Carrot ($75), Onion ($150).`);
 		return;
 	}
 	if (!getTileCoordinates(tile)) {
@@ -836,7 +1119,7 @@ async function buyCrop(event, chatterLogin, chatterName, kind, tile) {
 	await sendFarmReply(event, chatterLogin, `@${chatterLogin} planted ${crop.name} on tile ${tile} for $${crop.price}. It will be ready in ${growthSeconds} seconds. Shared bank: $${farmState.bank}.`);
 }
 
-async function growAllCropsImmediately(username, bits) {
+async function growAllCropsImmediately(username, bits, isMockSimulator = false) {
 	const now = Date.now();
 	let cropsGrown = 0;
 	for (const [tile, crop] of Object.entries(farmState.crops)) {
@@ -851,6 +1134,7 @@ async function growAllCropsImmediately(username, bits) {
 	await writeJsonFile(FARM_STATE_PATH, farmState);
 	broadcastFarmState();
 	broadcastToBrowsers({ type: 'farm.cheer.grow', username, bits, cropsGrown });
+	await announceFarmEvent(`@${username} donated ${bits} bits, all crops instantly grown!`, isMockSimulator);
 	console.log(`${username} cheered ${bits} bits; instantly grew ${cropsGrown} crops.`);
 }
 
@@ -870,28 +1154,37 @@ async function voteToHarvest(event, chatterLogin, tile, activeChattersAtMessage)
 		return;
 	}
 
-	if (!Number.isInteger(crop.requiredVotes) || crop.votes.length === 0) {
-		crop.requiredVotes = getRequiredHarvestVotes(activeChattersAtMessage);
-	}
+	const previousRequiredVotes = crop.requiredVotes;
+	crop.requiredVotes = getRequiredHarvestVotes(activeChattersAtMessage);
 	const voter = (event.chatter_user_login || chatterLogin).toLowerCase();
-	if (crop.votes.includes(voter)) {
-		broadcastToBrowsers({
-			type: 'farm.harvest.progress', tile, votes: crop.votes.length, required: crop.requiredVotes,
-			message: `${crop.votes.length}/${crop.requiredVotes} unique chatters`,
-			username: event.chatter_user_name || chatterLogin
-		});
+	const newVote = !crop.votes.includes(voter);
+	if (newVote) crop.votes.push(voter);
+	const harvestComplete = crop.votes.length >= crop.requiredVotes;
+	if (crop.votes.length < crop.requiredVotes) {
+		if (newVote || previousRequiredVotes !== crop.requiredVotes) {
+			await writeJsonFile(FARM_STATE_PATH, farmState);
+		}
+		if (DYNAMIC_HARVEST_ENABLED) {
+			broadcastToBrowsers({
+				type: 'farm.harvest.progress', tile, votes: crop.votes.length, required: crop.requiredVotes,
+				message: `${crop.votes.length}/${crop.requiredVotes} unique chatters`,
+				username: event.chatter_user_name || chatterLogin, newVote, complete: false
+			});
+		}
+		if (newVote) {
+			await sendFarmReply(event, chatterLogin, `Harvest on tile ${tile}: ${crop.votes.length}/${crop.requiredVotes} unique chatters voted.`);
+		}
 		return;
 	}
-	crop.votes.push(voter);
-	if (crop.votes.length < crop.requiredVotes) {
-		await writeJsonFile(FARM_STATE_PATH, farmState);
+	await writeJsonFile(FARM_STATE_PATH, farmState);
+	if (DYNAMIC_HARVEST_ENABLED) {
 		broadcastToBrowsers({
 			type: 'farm.harvest.progress', tile, votes: crop.votes.length, required: crop.requiredVotes,
 			message: `${crop.votes.length}/${crop.requiredVotes} unique chatters`,
-			username: event.chatter_user_name || chatterLogin
+			username: event.chatter_user_name || chatterLogin,
+			newVote,
+			complete: harvestComplete
 		});
-		await sendFarmReply(event, chatterLogin, `Harvest on tile ${tile}: ${crop.votes.length}/${crop.requiredVotes} unique chatters voted.`);
-		return;
 	}
 
 	const spec = CROP_CATALOG[crop.kind];
@@ -903,8 +1196,22 @@ async function voteToHarvest(event, chatterLogin, tile, activeChattersAtMessage)
 	planter.points += points;
 	planter.harvests += 1;
 	leaderboard.users[planterLogin] = planter;
+	for (const reward of rewards) {
+		if (!leaderboard.mostValuableCrop || reward.value > leaderboard.mostValuableCrop.value) {
+			leaderboard.mostValuableCrop = {
+				username: planter.username,
+				login: planterLogin,
+				kind: crop.kind,
+				weightKg: reward.weightKg,
+				value: reward.value,
+				modifier: reward.modifier || null,
+				shiny: reward.shiny === true
+			};
+		}
+	}
 	farmState.bank += bankReturn;
 	farmState.harvestedCrops += 1;
+	farmState.islandLevel = getIslandLevelForHarvestCount(farmState.harvestedCrops);
 	farmState.crops[tile] = null;
 	farmState.wetness[tile] = 0;
 	const newLevel = getIslandLevel();
@@ -982,6 +1289,35 @@ async function registerEventSubListeners() {
 		console.log(`Subscribed to channel.chat.message [${data.data[0].id}]`);
 	}
 
+	for (const type of ['stream.online', 'stream.offline']) {
+		response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+			method: 'POST',
+			headers: {
+				'Authorization': 'Bearer ' + OAUTH_TOKEN,
+				'Client-Id': CLIENT_ID,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				type,
+				version: '1',
+				condition: { broadcaster_user_id: CHAT_CHANNEL_USER_ID },
+				transport: { method: 'websocket', session_id: websocketSessionID }
+			})
+		});
+		const data = await response.json().catch(() => ({}));
+		if (response.status !== 202) {
+			console.warn(`Failed to subscribe to ${type} (HTTP ${response.status}):`, data);
+		} else {
+			console.log(`Subscribed to ${type} [${data.data?.[0]?.id || 'enabled'}]`);
+		}
+	}
+
+	if (oauthUserId === String(CHAT_CHANNEL_USER_ID) && tokenScopes.has('channel:read:subscriptions')) {
+		await subscribeToChannelSubscribe(websocketSessionID, OAUTH_TOKEN);
+	} else if (!channelOwnerTokenReady) {
+		console.warn('Real subscriber flower events are disabled. Authorize the channel owner with channel:read:subscriptions and set CHANNEL_OWNER_OAUTH_TOKEN, or add that scope to OAUTH_TOKEN when it belongs to the channel owner.');
+	}
+
 	if (!tokenScopes.has('bits:read')) {
 		console.warn('500-bit crop growth is disabled until the OAuth token is authorized with bits:read.');
 		return;
@@ -1008,4 +1344,28 @@ async function registerEventSubListeners() {
 		const data = await response.json();
 		console.log(`Subscribed to channel.cheer [${data.data[0].id}]`);
 	}
+}
+
+async function subscribeToChannelSubscribe(sessionId, accessToken) {
+	const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+		method: 'POST',
+		headers: {
+			'Authorization': `Bearer ${accessToken}`,
+			'Client-Id': CLIENT_ID,
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			type: 'channel.subscribe',
+			version: '1',
+			condition: { broadcaster_user_id: CHAT_CHANNEL_USER_ID },
+			transport: { method: 'websocket', session_id: sessionId }
+		})
+	});
+	const data = await response.json().catch(() => ({}));
+	if (response.status !== 202) {
+		console.warn(`Failed to subscribe to channel.subscribe (HTTP ${response.status}):`, data);
+		return false;
+	}
+	console.log(`Subscribed to channel.subscribe [${data.data?.[0]?.id || 'enabled'}]`);
+	return true;
 }

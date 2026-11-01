@@ -100,7 +100,7 @@
 			position: absolute; z-index: 2; left: 50%; top: calc(35% + clamp(155px, 16vw, 230px) - var(--composition-shift));
 			display: flex; align-items: center; gap: 14px;
 			transform: translate(-50%, 8px); opacity: 0; white-space: nowrap;
-			color: #d8d8d8; font-size: clamp(26px, 3.3vw, 40px); font-weight: 700;
+			color: #d8d8d8; font-size: clamp(39px, 4.95vw, 60px); font-weight: 700;
 			-webkit-text-stroke: 2px #050606; paint-order: stroke fill;
 			text-shadow: 2px 2px #171311, -1px -1px #171311;
 			filter: drop-shadow(2px 3px 0 #35291c);
@@ -109,18 +109,18 @@
 		#harvest-reward-stage .reward-weight.visible { opacity: 1; transform: translate(-50%, 0); }
 		#harvest-reward-stage .reward-shiny-label {
 			position: absolute; z-index: 3; left: 50%;
-			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(42px, 5vw, 58px) - var(--composition-shift));
+			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(78px, 8vw, 94px) - var(--composition-shift));
 			transform: translate(-50%, 5px) scale(0.8); opacity: 0; white-space: nowrap;
-			color: #ffe36a; font: 700 clamp(22px, 2.8vw, 34px)/1 'Pixelify Sans', monospace;
+			color: #ffe36a; font: 700 clamp(33px, 4.2vw, 51px)/1 'Pixelify Sans', monospace;
 			-webkit-text-stroke: 1.5px #171311; paint-order: stroke fill;
 			text-shadow: 2px 2px #171311; filter: drop-shadow(2px 2px 0 #35291c);
 			pointer-events: none;
 		}
 		#harvest-reward-stage .reward-modifier-label {
 			position: absolute; z-index: 3; left: 50%;
-			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(78px, 8vw, 94px) - var(--composition-shift));
+			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(42px, 5vw, 58px) - var(--composition-shift));
 			transform: translate(-50%, 5px) scale(0.8); opacity: 0; white-space: nowrap;
-			color: #ffd28b; font: 700 clamp(22px, 2.8vw, 34px)/1 'Pixelify Sans', monospace;
+			color: #ffd28b; font: 700 clamp(33px, 4.2vw, 51px)/1 'Pixelify Sans', monospace;
 			-webkit-text-stroke: 1.5px #171311; paint-order: stroke fill;
 			text-shadow: 2px 2px #171311; filter: drop-shadow(2px 2px 0 #35291c);
 			pointer-events: none;
@@ -129,7 +129,7 @@
 			position: absolute; z-index: 3; left: 50%;
 			top: calc(35% + clamp(155px, 16vw, 230px) - clamp(112px, 11vw, 132px) - var(--composition-shift));
 			transform: translate(-50%, 5px) scale(0.8); opacity: 0; white-space: nowrap;
-			color: #d7ffb0; font: 700 clamp(22px, 2.8vw, 34px)/1 'Pixelify Sans', monospace;
+			color: #d7ffb0; font: 700 clamp(33px, 4.2vw, 51px)/1 'Pixelify Sans', monospace;
 			-webkit-text-stroke: 1.5px #171311; paint-order: stroke fill;
 			text-shadow: 2px 2px #171311; filter: drop-shadow(2px 2px 0 #35291c);
 			pointer-events: none;
@@ -145,7 +145,7 @@
 		#harvest-reward-stage .reward-payout {
 			position: absolute; z-index: 4; left: 50%; top: calc(35% - var(--composition-shift));
 			transform: translate(-50%, -50%); opacity: 0; white-space: nowrap;
-			color: #ffdc45; font: 700 clamp(30px, 4vw, 48px)/1 'Pixelify Sans', monospace;
+			color: #ffdc45; font: 700 clamp(45px, 6vw, 72px)/1 'Pixelify Sans', monospace;
 			-webkit-text-stroke: 2px #171311; paint-order: stroke fill;
 			text-shadow: 3px 3px #171311; filter: drop-shadow(2px 3px 0 #35291c);
 			pointer-events: none;
@@ -413,7 +413,9 @@
 			}
 			preload() {
 				this.load.spritesheet('island-1x1', '/assets/1x1.png', { frameWidth: 85, frameHeight: 85 });
+				this.load.spritesheet('island-1x1-flowers', '/assets/1x1flowers.png', { frameWidth: 85, frameHeight: 85 });
 				this.load.spritesheet('island-2x2', '/assets/2x2.png', { frameWidth: 142, frameHeight: 92 });
+				this.load.spritesheet('island-2x2-flowers', '/assets/2x2flowers.png', { frameWidth: 142, frameHeight: 92 });
 				this.load.image('island-2x2-signs', '/assets/2x2signs.png');
 				this.load.image('carrot-stage-1', '/assets/Carrot1.png');
 				this.load.image('carrot-stage-2', '/assets/Carrot2.png');
@@ -433,16 +435,20 @@
 			}
 
 			create() {
-				this.latestFarmState = { level: 1, crops: {} };
+				this.latestFarmState = { level: 1, crops: {}, subscriberCount: 0, growthMultiplier: 1 };
+				this.subscriberFlowerSprite = null;
+				this.subscriberFlowerCount = 0;
 				this.pendingPlantRevealTiles = new Set();
 				this.harvestingTiles = new Set();
 				this.displayedBankBalance = 0;
 				this.harvestBalanceAnimationActive = false;
 				this.pendingHarvestBankBalance = null;
+				this.streamAnnouncementQueue = [];
+				this.streamAnnouncementActive = false;
 				this.debugIslandLevel = null;
 				this.islandUpgradeTransition = false;
 				this.pendingIslandUpgradeState = null;
-				this.debugShinyChance = 0.1;
+				this.debugShinyChance = 0.15;
 				this.debugActiveChatters = 1;
 				this.anims.create({
 					key: 'island-1x1-seafoam',
@@ -502,12 +508,14 @@
 					const island = this.add.sprite(centerX, centerY, 'island-1x1', 0).setScale(3.2).setDepth(2);
 					island.anims.play('island-1x1-seafoam');
 					this.islandRenderObjects.push(island);
+					this.drawSubscriberFlowers(level);
 					this.drawWetOverlays(level);
 					return;
 				}
 				if (level === 2) {
 					const island = this.add.sprite(centerX, centerY, 'island-2x2', 0).setScale(3.2).setDepth(2);
 					island.anims.play('island-2x2-seafoam');
+					this.drawSubscriberFlowers(level);
 					const signs = this.add.image(centerX, centerY, 'island-2x2-signs').setScale(3.2).setDepth(50);
 					this.islandRenderObjects.push(island, signs);
 					this.drawWetOverlays(level);
@@ -571,6 +579,40 @@
 				}
 				}
 				this.drawWetOverlays(level);
+			}
+			drawSubscriberFlowers(level, subscriberCount = Number(this.latestFarmState?.subscriberCount) || 0, animate = false) {
+				const count = Math.max(0, Math.floor(subscriberCount));
+				const frame = Math.min(3, count - 1);
+				const texture = level === 1 ? 'island-1x1-flowers' : 'island-2x2-flowers';
+				const centerX = this.scale.width / 2;
+				const centerY = getIslandLayout(this, level).centerY;
+				if (this.subscriberFlowerSprite?.active && this.subscriberFlowerCount === count && this.subscriberFlowerSprite.texture.key === texture) return;
+				if (count === 0) {
+					this.subscriberFlowerSprite?.destroy();
+					this.subscriberFlowerSprite = null;
+					this.subscriberFlowerCount = 0;
+					return;
+				}
+				const existing = this.subscriberFlowerSprite;
+				if (existing?.active && existing.texture.key === texture && animate) {
+					this.tweens.killTweensOf(existing);
+					this.subscriberFlowerCount = count;
+					this.tweens.add({
+						targets: existing, alpha: 0, duration: 120, ease: 'Sine.easeIn',
+						onComplete: () => {
+							if (!existing.active || this.subscriberFlowerSprite !== existing) return;
+							existing.setFrame(frame);
+							this.tweens.add({ targets: existing, alpha: 1, duration: 260, ease: 'Sine.easeOut' });
+						}
+					});
+					return;
+				}
+				existing?.destroy();
+				const flowers = this.add.sprite(centerX, centerY, texture, frame).setScale(3.2).setDepth(4).setAlpha(animate ? 0 : 1);
+				this.subscriberFlowerSprite = flowers;
+				this.subscriberFlowerCount = count;
+				this.islandRenderObjects.push(flowers);
+				if (animate) this.tweens.add({ targets: flowers, alpha: 1, duration: 420, ease: 'Sine.easeOut' });
 			}
 			transitionIslandUpgrade(farmState) {
 				this.pendingIslandUpgradeState = farmState;
@@ -681,7 +723,7 @@
 					const now = Date.now();
 					const growthDuration = CROP_GROWTH_MS[crop.kind] || 30_000;
 					const wetness = Math.max(0, Math.min(15, Number(this.latestFarmState.wetness?.[tile]) || 0));
-					const growthMultiplier = 1 + 4 * wetness / 15;
+					const growthMultiplier = (1 + 4 * wetness / 15) * (Number(this.latestFarmState.growthMultiplier) || 1);
 					const updatedAt = Number.isFinite(crop.growthUpdatedAt) ? crop.growthUpdatedAt : crop.plantedAt || now;
 					const storedProgress = Number.isFinite(crop.growthProgressMs) ? crop.growthProgressMs : 0;
 					const progress = Math.min(growthDuration, Math.max(0, storedProgress + Math.max(0, now - updatedAt) * growthMultiplier));
@@ -748,6 +790,9 @@
 			}
 			showHarvest(tile = 1, cropKind = '', harvestId = null, bankReturn = null, rewards = null) {
 				const harvestTile = Number(tile);
+				if (!this.progressLabels?.[harvestTile]?.getData('harvestComplete')) {
+					this.hideHarvestProgress(harvestTile);
+				}
 				this.harvestingTiles.add(harvestTile);
 				this.currentHarvestTile = harvestTile;
 				this.latestFarmState = {
@@ -953,13 +998,13 @@
 					carrot.classList.add('visible');
 					await wait(420);
 					weight.classList.add('visible');
-					if (reward.shiny === true) {
-						await wait(140);
-						shinyLabel.classList.add('visible');
-					}
 					if (modifier) {
-						await wait(reward.shiny === true ? 100 : 140);
+						await wait(140);
 						modifierLabel.classList.add('visible');
+					}
+					if (reward.shiny === true) {
+						await wait(modifier ? 100 : 140);
+						shinyLabel.classList.add('visible');
 					}
 					if (mutantLabel.textContent) {
 						await wait(modifier || reward.shiny === true ? 100 : 140);
@@ -1077,20 +1122,51 @@
 				}
 				return Promise.all(flights);
 			}
-			showFloatingActionLabel(x, y, username, symbol = '') {
+			showFloatingActionLabel(x, y, username, symbol = '', suffix = '', fontSize = 16, options = {}) {
 				if (!username) return;
-				const labelText = symbol ? `${symbol} @${username}` : `@${username}`;
+				const labelText = `${symbol ? `${symbol} ` : ''}@${username}${suffix}`;
 				const label = this.add.text(x, y, labelText, {
 					fontFamily: '"Pixelify Sans", "Segoe UI Emoji", sans-serif',
-					fontSize: '16px', color: '#ffffff',
+					fontSize: `${fontSize}px`, color: '#ffffff',
 					stroke: '#26343a', strokeThickness: 3,
 					shadow: { offsetX: 1, offsetY: 2, color: '#19252a', blur: 0, fill: true }
 				}).setOrigin(0.5, 1).setDepth(2300);
 				this.tweens.add({
 					targets: label, y: y - 42, alpha: 0,
-					delay: 350, duration: 3000, ease: 'Sine.easeInOut',
-					onComplete: () => label.destroy()
+					delay: options.fadeDelay ?? 350,
+					duration: options.fadeDuration ?? 3000,
+					ease: 'Sine.easeInOut',
+					onComplete: () => {
+						label.destroy();
+						options.onComplete?.();
+					}
 				});
+			}
+			enqueueStreamAnnouncement(username, symbol, suffix = '', fontSize = 16) {
+				if (!username) return;
+				this.streamAnnouncementQueue.push({ username, symbol, suffix, fontSize });
+				this.playNextStreamAnnouncement();
+			}
+			playNextStreamAnnouncement() {
+				if (this.streamAnnouncementActive || !this.streamAnnouncementQueue.length) return;
+				this.streamAnnouncementActive = true;
+				const announcement = this.streamAnnouncementQueue.shift();
+				this.showFloatingActionLabel(
+					this.scale.width / 2,
+					this.scale.height / 2 - 110,
+					announcement.username,
+					announcement.symbol,
+					announcement.suffix,
+					announcement.fontSize,
+					{
+						fadeDelay: 1300,
+						fadeDuration: 3000,
+						onComplete: () => {
+							this.streamAnnouncementActive = false;
+							this.playNextStreamAnnouncement();
+						}
+					}
+				);
 			}
 			showWatering(tile = 1, username = '') {
 				const position = getTilePosition(this, tile);
@@ -1186,25 +1262,68 @@
 					}
 				});
 			}
+			hideHarvestProgress(tile) {
+				const label = this.progressLabels?.[tile];
+				if (label?.active) {
+					this.tweens.killTweensOf(label);
+					label.destroy();
+				}
+				if (this.progressLabels) delete this.progressLabels[tile];
+				this.progressLabelTimers?.[tile]?.remove(false);
+				if (this.progressLabelTimers) delete this.progressLabelTimers[tile];
+			}
 			showHarvestProgress(message) {
 				const position = getTilePosition(this, message.tile, this.latestFarmState.level || 1, 58);
 				if (!position) return;
 				this.progressLabels ||= {};
+				this.progressLabelTimers ||= {};
 				let label = this.progressLabels[message.tile];
 				if (!label || !label.active) {
 					label = this.add.text(position.x, position.y, '', {
-						fontFamily: 'monospace', fontSize: '13px', color: '#ffffff',
-						backgroundColor: '#315d35', padding: { x: 5, y: 3 }
+						fontFamily: '"Pixelify Sans", monospace', fontSize: '18px',
+						fontStyle: 'bold', color: '#fff4d7',
+						backgroundColor: 'rgba(0, 0, 0, 0)',
+						stroke: '#171311', strokeThickness: 4,
+						shadow: { offsetX: 2, offsetY: 3, color: '#35291c', blur: 0, fill: true }
 					}).setOrigin(0.5).setDepth(1200);
 					this.progressLabels[message.tile] = label;
 				}
-				label.setText(`${message.votes}/${message.required} harvest votes`);
-				this.time.delayedCall(2500, () => {
-					if (this.progressLabels[message.tile] === label) {
-						label.destroy();
-						delete this.progressLabels[message.tile];
-					}
+				label.setText(`${message.votes}/${message.required} harvesters`);
+				label.setStyle({
+					color: message.complete ? '#85f274' : '#fff4d7',
+					backgroundColor: 'rgba(0, 0, 0, 0)'
 				});
+				label.setData('harvestComplete', message.complete === true);
+				label.setPosition(position.x, position.y);
+				this.tweens.killTweensOf(label);
+				label.setAlpha(1);
+				const shouldJolt = message.newVote || message.complete;
+				const fadeOut = () => {
+					this.progressLabelTimers[message.tile]?.remove(false);
+					this.progressLabelTimers[message.tile] = this.time.delayedCall(180, () => {
+						this.tweens.add({
+							targets: label, alpha: 0, duration: 480, ease: 'Sine.easeOut',
+							onComplete: () => {
+								if (this.progressLabels[message.tile] === label) this.hideHarvestProgress(message.tile);
+							}
+						});
+					});
+				};
+				if (shouldJolt) {
+					this.tweens.add({
+						targets: label, y: position.y - 8, duration: 85,
+						ease: 'Quad.easeOut', yoyo: true, hold: 25,
+						onComplete: message.complete ? fadeOut : undefined
+					});
+				} else if (message.complete) {
+					fadeOut();
+				}
+				if (!message.complete) {
+					this.progressLabelTimers[message.tile]?.remove(false);
+					this.progressLabelTimers[message.tile] = this.time.delayedCall(5000, () => {
+						if (this.progressLabels[message.tile] === label) this.hideHarvestProgress(message.tile);
+					});
+				}
 			}
 			connectToBot() {
 				const socket = new WebSocket('ws://localhost:8080');
@@ -1213,7 +1332,7 @@
 					try {
 						const message = JSON.parse(event.data);
 						if (message.type === 'debug.settings') {
-							this.debugShinyChance = message.shinyChance === 0.5 ? 0.5 : 0.1;
+							this.debugShinyChance = message.shinyChance === 0.5 ? 0.5 : 0.15;
 							this.debugActiveChatters = message.activeChatters === 50 ? 50 : 1;
 							this.debugIslandLevel = message.islandLevel === 1 || message.islandLevel === 2 ? message.islandLevel : null;
 							const displayLevel = this.debugIslandLevel || this.latestFarmState.level || 1;
@@ -1241,8 +1360,18 @@
 								this.transitionIslandUpgrade(farmState);
 								return;
 							}
+							this.drawSubscriberFlowers(farmState.level || 1, farmState.subscriberCount || 0);
 							this.updateWetOverlays(farmState.wetness);
 							this.renderCrops(farmState.crops);
+						} else if (message.type === 'farm.subscribed') {
+							this.latestFarmState = {
+								...this.latestFarmState,
+								subscriberCount: message.subscriberCount,
+								growthMultiplier: message.growthMultiplier,
+								plantWorthMultiplier: message.plantWorthMultiplier
+							};
+							this.drawSubscriberFlowers(this.latestFarmState.level || 1, message.subscriberCount, true);
+							this.enqueueStreamAnnouncement(message.username, '🌸', ' subbed!', 22);
 						} else if (message.type === 'farm.harvest.progress') {
 							this.showHarvestProgress(message);
 						} else if (message.type === 'farm.harvested') {
@@ -1257,7 +1386,7 @@
 								this.renderCrops(this.latestFarmState.crops);
 							});
 						} else if (message.type === 'farm.cheer.grow') {
-							this.showFloatingActionLabel(this.scale.width / 2, this.scale.height / 2 - 110, message.username, '✨');
+							this.enqueueStreamAnnouncement(message.username, '✨', ` just donated ${Number(message.bits) || 0} bits!`);
 						} else if (message.type === 'command.harvest') {
 							this.showHarvest(1);
 						}

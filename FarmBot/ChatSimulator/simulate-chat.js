@@ -6,8 +6,8 @@ const USERNAMES = [
 const USER_COLORS = ['#ff7bac', '#66d9ef', '#8fe388', '#ffc36e', '#d19bff', '#6fe4b0', '#ff9d8e', '#91a8ff'];
 const CROP_INFO = {
 	potato: { cost: 0, value: 10, growthMs: 30_000, label: 'potato' },
-	carrot: { cost: 30, value: 30, growthMs: 45_000, label: 'carrot' },
-	onion: { cost: 100, value: 100, growthMs: 60_000, label: 'onion' }
+	carrot: { cost: 75, value: 30, growthMs: 45_000, label: 'carrot' },
+	onion: { cost: 150, value: 100, growthMs: 60_000, label: 'onion' }
 };
 const CHATTER_LINES = [
 	'cozy little farm stream \u{1F331}', 'this island is coming together', 'the water animation is so satisfying',
@@ -21,11 +21,17 @@ const connectionLabel = document.getElementById('connection-label');
 let socket = null;
 let farm = null;
 let activeChatters = 1;
+let dynamicHarvestEnabled = false;
+let mockBitsEnabled = false;
+let mockSubsEnabled = false;
 let mockControl = { enabled: true, activityLevel: 2, activityName: 'medium', intervalMs: 4000 };
 let simulatorStarted = false;
 let harvestAnimationActive = false;
 let pendingHarvestHype = false;
 let actionTimer = null;
+let mockBitsTimer = null;
+let mockSubsTimer = null;
+let mockSubscriberSequence = 0;
 const lastWaterCommandAt = new Map();
 
 function randomChoice(items) {
@@ -76,9 +82,9 @@ function copyFarmState(state) {
 }
 
 function getRequiredVotes() {
+	if (!dynamicHarvestEnabled) return 1;
 	if (activeChatters < 10) return 1;
-	if (activeChatters <= 50) return 5;
-	return 5 + Math.ceil((activeChatters - 50) / 10);
+	return Math.min(5, 2 + Math.floor(Math.max(0, activeChatters - 50) / 100));
 }
 
 function getTileNumbers() {
@@ -221,6 +227,39 @@ function scheduleNextAction() {
 	}, delay);
 }
 
+function scheduleMockBitsEvent() {
+	window.clearTimeout(mockBitsTimer);
+	if (!mockControl.enabled || !mockBitsEnabled || socket?.readyState !== WebSocket.OPEN) return;
+	mockBitsTimer = window.setTimeout(() => {
+		if (mockControl.enabled && mockBitsEnabled && socket?.readyState === WebSocket.OPEN) {
+			const username = randomChoice(USERNAMES);
+			const bits = 501 + Math.floor(Math.random() * 2500);
+			appendLine(username, `cheered ${bits} bits!`, 'reaction');
+			socket.send(JSON.stringify({ type: 'mock.cheer', username, bits }));
+		}
+		scheduleMockBitsEvent();
+	}, 30_000 + Math.random() * 60_000);
+}
+
+function scheduleMockSubsEvent() {
+	window.clearTimeout(mockSubsTimer);
+	if (!mockControl.enabled || !mockSubsEnabled || socket?.readyState !== WebSocket.OPEN) return;
+	mockSubsTimer = window.setTimeout(() => {
+		if (mockControl.enabled && mockSubsEnabled && socket?.readyState === WebSocket.OPEN) {
+			const username = randomChoice(USERNAMES);
+			const subscriberId = `mock-subscriber-${Date.now()}-${++mockSubscriberSequence}`;
+			appendLine(username, 'just subscribed to the farm!', 'reaction');
+			socket.send(JSON.stringify({ type: 'mock.sub', username, subscriberId }));
+		}
+		scheduleMockSubsEvent();
+	}, 45_000 + Math.random() * 75_000);
+}
+
+function scheduleMockEvents() {
+	scheduleMockBitsEvent();
+	scheduleMockSubsEvent();
+}
+
 function handleFarmMessage(message) {
 	if (message.type === 'farm.state') {
 		farm = copyFarmState(message);
@@ -230,10 +269,15 @@ function handleFarmMessage(message) {
 		mockControl = message;
 		if (connection.classList.contains('connected')) setConnection('connected', 'Connected');
 		if (simulatorStarted) scheduleNextAction();
+		scheduleMockEvents();
 		return;
 	}
 	if (message.type === 'debug.settings') {
 		activeChatters = Number(message.activeChatters) || 1;
+		dynamicHarvestEnabled = message.dynamicHarvest === true;
+		mockBitsEnabled = message.mockBitsEnabled === true;
+		mockSubsEnabled = message.mockSubsEnabled === true;
+		scheduleMockEvents();
 		return;
 	}
 	if (message.type === 'chat.message') {
@@ -249,6 +293,9 @@ function handleFarmMessage(message) {
 	}
 	if (message.type === 'farm.planted') {
 		appendLine(randomChoice(USERNAMES), `new ${message.crop} on tile ${message.tile} \u{1F331}`);
+		return;
+	}
+	if (message.type === 'farm.subscribed') {
 		return;
 	}
 	if (message.type === 'farm.watered') {
@@ -291,9 +338,7 @@ function handleFarmMessage(message) {
 		}
 		return;
 	}
-	if (message.type === 'farm.cheer.grow') {
-		appendLine(randomChoice(USERNAMES), 'everything grew instantly?! \u{2728}', 'reaction');
-	}
+	if (message.type === 'farm.cheer.grow') return;
 }
 
 function connect() {
@@ -309,6 +354,7 @@ function connect() {
 			appendLine('FarmBot', 'Mock chat is watching the live farm.', 'notice');
 			scheduleNextAction();
 		}
+		scheduleMockEvents();
 	});
 	currentSocket.addEventListener('message', (event) => {
 		try { handleFarmMessage(JSON.parse(event.data)); }
