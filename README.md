@@ -30,7 +30,7 @@ Fill in the required Twitch values in `FarmBot/.env.local`, then start the bot a
 node bot.js
 ```
 
-Open the overlay at [http://localhost:8080](http://localhost:8080). The farm background is transparent.
+Open the overlay at [http://localhost:8080](http://localhost:8080). In a regular browser it uses a solid blue background; in an OBS Browser Source it detects OBS and uses the transparent, dithered ocean overlay.
 
 The optional mock chat page is at [http://localhost:8080/chat-simulator](http://localhost:8080/chat-simulator). Add it as a separate OBS Browser Source for a demo chat panel. Keep the bot process running while either page is in use.
 
@@ -43,7 +43,7 @@ The overlay loads Phaser 3.90 from jsDelivr, so the browser needs internet acces
 3. Set the URL to `http://localhost:8080/`.
 4. Set **Width** to `800` and **Height** to `600` (recommended).
 
-The overlay has a transparent background. To show the demo chat separately, add another Browser Source with `http://localhost:8080/chat-simulator`.
+The overlay detects OBS Browser Source through its `window.obsstudio` integration and switches to transparency automatically. To force a mode for testing, append `?background=transparent` or `?background=blue` to the overlay URL. To show the demo chat separately, add another Browser Source with `http://localhost:8080/chat-simulator`.
 
 ## Twitch setup
 
@@ -58,7 +58,7 @@ The overlay has a transparent background. To show the demo chat separately, add 
 3. Set `CLIENT_ID`, the bot account's numeric ID in `BOT_USER_ID`, and the channel owner's numeric ID in `CHAT_CHANNEL_USER_ID`.
 4. Save the file as `FarmBot/.env.local`, then run `node bot.js` from the `FarmBot` directory. Look for `Validated token.` and a successful `channel.chat.message` subscription in the terminal.
 
-To enable real-time new-subscriber flowers and their farm bonuses, authorize a user token belonging to the channel owner with the `channel:read:subscriptions` scope. Add that scope to `OAUTH_TOKEN` when it is already the channel owner's token. If the bot uses its own account token, put the separate channel-owner token in `CHANNEL_OWNER_OAUTH_TOKEN`. Only new subscriptions count; resubscriptions do not. The flower display stops at four frames, while each new subscriber continues to add 10% crop growth speed and 5% crop value for the rest of the stream.
+To enable real-time new-subscriber flowers and their farm bonuses, authorize a user token belonging to the channel owner with the `channel:read:subscriptions` scope. Add that scope to `OAUTH_TOKEN` when it is already the channel owner's token. If the bot uses its own account token, put the separate channel-owner token in `CHANNEL_OWNER_OAUTH_TOKEN`. Only new subscriptions count; resubscriptions do not. The flower display stops at four frames. The first four unique new subscribers each add 10% crop growth speed and 3 percentage points of shiny chance for the rest of the stream; additional subscribers still count for flowers but do not increase those bonuses. The subscriber bonuses cap at +40% growth speed and +12 percentage points of shiny chance.
 
 To create the separate owner token with Twitch CLI, sign in as the channel owner and run `twitch token --user-token --scopes "channel:read:subscriptions"`, then set its token value as `CHANNEL_OWNER_OAUTH_TOKEN`.
 
@@ -72,7 +72,7 @@ To create the separate owner token with Twitch CLI, sign in as the channel owner
 | Count new subscribers and enable flower bonuses | `channel:read:subscriptions` | Optional broadcaster token; use `CHANNEL_OWNER_OAUTH_TOKEN` if `OAUTH_TOKEN` belongs to a separate bot account |
 | Grow all crops on a 500+ bit Cheer | `bits:read` | Optional on `OAUTH_TOKEN`; without it, no Cheer EventSub subscription is created |
 
-For subscriber flowers, the token must belong to `CHAT_CHANNEL_USER_ID`, and Twitch must have granted the scope to the same application as `CLIENT_ID`. The bot validates the token's account ID and scope before subscribing. Twitch's `channel.subscribe` event covers new subscriptions, not resubscriptions. The bot stores each subscriber once per stream, resets subscriber bonuses when a stream starts or ends, shows up to four flower frames, and adds 10% crop growth speed and 5% crop value per unique new subscriber. See Twitch's [EventSub subscription types](https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/) and [token scopes](https://dev.twitch.tv/docs/authentication/scopes/).
+For subscriber flowers, the token must belong to `CHAT_CHANNEL_USER_ID`, and Twitch must have granted the scope to the same application as `CLIENT_ID`. The bot validates the token's account ID and scope before subscribing. Twitch's `channel.subscribe` event covers new subscriptions, not resubscriptions. The bot stores each subscriber once per stream, resets subscriber bonuses when a stream starts or ends, shows up to four flower frames, and grants the growth and shiny chance bonuses for up to four unique new subscribers. See Twitch's [EventSub subscription types](https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/) and [token scopes](https://dev.twitch.tv/docs/authentication/scopes/).
 
 `bits:read` enables the optional 500-bit crop-growth reward. The bot does not need a Twitch Client Secret at runtime. Keep `.env.local` private and do not commit or share its token values.
 

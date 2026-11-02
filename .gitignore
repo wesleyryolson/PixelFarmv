@@ -3,3 +3,5 @@
 .env.*
 !.env.example
 !.env.*.example
+/FarmBot/farm-state.json
+/FarmBot/leaderboard.json
