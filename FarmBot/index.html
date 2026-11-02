@@ -13,9 +13,11 @@
 			font-display: swap;
 		}
 		:root { --composition-shift: 40px; --composition-shift-up: -40px; }
-		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+		html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #7fc7e4; }
+		html.obs-browser, html.obs-browser body { background: transparent !important; }
 		body { image-rendering: pixelated; }
 		#ocean-background { position: fixed; z-index: 0; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+		html.browser-preview #ocean-background { display: none; }
 		#game { position: relative; z-index: 1; width: 100%; height: 100%; background: transparent; }
 		canvas { display: block; image-rendering: pixelated; background: transparent; }
 		#game canvas { transform: translateY(var(--composition-shift-up)); }
@@ -179,6 +181,14 @@
 			#farm-menu { --balance-bottom: clamp(64px, 10.7vh, 84px); }
 		}
 	</style>
+	<script>
+		(() => {
+			const requestedBackground = new URLSearchParams(window.location.search).get('background');
+			const isObsBrowser = requestedBackground === 'transparent'
+				|| (requestedBackground !== 'blue' && typeof window.obsstudio === 'object' && window.obsstudio !== null);
+			document.documentElement.classList.add(isObsBrowser ? 'obs-browser' : 'browser-preview');
+		})();
+	</script>
 	<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
 </head>
 <body>
@@ -210,13 +220,14 @@
 	</aside>
 	<script type="module">
 		import { addIsometricSprite, projectIsometricPosition, spawnHarvestPuff } from './utilities.js';
+		const isObsBrowser = document.documentElement.classList.contains('obs-browser');
 
 		class OceanBackdrop {
 			constructor(canvas) {
 				this.canvas = canvas;
 				this.context = canvas.getContext('2d', { alpha: true });
 				this.maskCanvas = document.createElement('canvas');
-				this.maskContext = this.maskCanvas.getContext('2d', { willReadFrequently: true });
+				this.maskContext = this.maskCanvas.getContext('2d');
 				this.strips = [];
 				this.resize();
 				window.addEventListener('resize', () => this.resize());
@@ -438,6 +449,7 @@
 				this.latestFarmState = { level: 1, crops: {}, subscriberCount: 0, growthMultiplier: 1 };
 				this.subscriberFlowerSprite = null;
 				this.subscriberFlowerCount = 0;
+				this.cropRenderSignature = null;
 				this.pendingPlantRevealTiles = new Set();
 				this.harvestingTiles = new Set();
 				this.displayedBankBalance = 0;
@@ -474,6 +486,7 @@
 					this.children.removeAll();
 					this.islandRenderObjects = [];
 					this.cropRenderObjects = [];
+					this.cropRenderSignature = null;
 					this.drawTiles(this.latestFarmState.level || 1);
 					this.farmer = this.createFarmer();
 					this.renderCrops(this.latestFarmState.crops);
@@ -493,7 +506,11 @@
 					else if (phase >= 320 && phase < 380) { xPixels = -1; yPixels = -2; }
 					else if (phase >= 380 && phase < 440) yPixels = -2;
 					else if (phase >= 440 && phase < 520) yPixels = -1;
-					idle.sprite.setPosition(idle.x + xPixels / zoom, idle.y + yPixels / zoom);
+					if (xPixels !== idle.lastXPixels || yPixels !== idle.lastYPixels) {
+						idle.sprite.setPosition(idle.x + xPixels / zoom, idle.y + yPixels / zoom);
+						idle.lastXPixels = xPixels;
+						idle.lastYPixels = yPixels;
+					}
 				}
 			}
 			drawTiles(level = 1) {
@@ -707,7 +724,30 @@
 				grown.destroy();
 			}
 			}
+			getCropRenderSignature(crops) {
+				const now = Date.now();
+				const level = this.latestFarmState.level || 1;
+				const growthBonus = Number(this.latestFarmState.growthMultiplier) || 1;
+				const cropStates = Object.entries(crops || {}).map(([tileText, crop]) => {
+					const tile = Number(tileText);
+					if (!crop || this.pendingPlantRevealTiles?.has(tile) || this.harvestingTiles?.has(tile)) return [tile, null];
+					const duration = CROP_GROWTH_MS[crop.kind] || 30_000;
+					const wetness = Math.max(0, Math.min(15, Number(this.latestFarmState.wetness?.[tile]) || 0));
+					const multiplier = (1 + 4 * wetness / 15) * growthBonus;
+					const updatedAt = Number.isFinite(crop.growthUpdatedAt) ? crop.growthUpdatedAt : crop.plantedAt || now;
+					const storedProgress = Number.isFinite(crop.growthProgressMs) ? crop.growthProgressMs : 0;
+					const progress = Math.min(duration, Math.max(0, storedProgress + Math.max(0, now - updatedAt) * multiplier));
+					const isGrown = progress >= duration || now >= crop.readyAt;
+					const stage = isGrown ? 3 : progress >= duration / 2 ? 2 : 1;
+					const nextMilestone = stage === 1 ? duration / 2 : duration;
+					const nextMilestoneBucket = isGrown ? 0 : Math.round((now + (nextMilestone - progress) / multiplier) / 250);
+					return [tile, crop.kind, crop.ownerLogin, crop.ownerName, stage, wetness, growthBonus, nextMilestoneBucket];
+				});
+				return JSON.stringify([level, cropStates]);
+			}
 			renderCrops(crops) {
+				const renderSignature = this.getCropRenderSignature(crops);
+				if (renderSignature === this.cropRenderSignature) return;
 				if (this.cropGrowthTimer) this.cropGrowthTimer.remove(false);
 				for (const object of this.cropRenderObjects || []) object.destroy();
 				this.cropRenderObjects = [];
@@ -776,6 +816,7 @@
 					sprite.setData('ownerTag', label);
 					this.cropRenderObjects.push(label);
 				}
+				this.cropRenderSignature = renderSignature;
 				if (nextGrowthUpdateAt < Infinity) {
 					this.cropGrowthTimer = this.time.delayedCall(Math.max(1, nextGrowthUpdateAt - Date.now() + 20), () => {
 						this.renderCrops(this.latestFarmState.crops);
@@ -1368,7 +1409,7 @@
 								...this.latestFarmState,
 								subscriberCount: message.subscriberCount,
 								growthMultiplier: message.growthMultiplier,
-								plantWorthMultiplier: message.plantWorthMultiplier
+								shinyChance: message.shinyChance
 							};
 							this.drawSubscriberFlowers(this.latestFarmState.level || 1, message.subscriberCount, true);
 							this.enqueueStreamAnnouncement(message.username, '🌸', ' subbed!', 22);
@@ -1407,7 +1448,7 @@
 		} catch (error) {
 			console.warn('The overlay font did not load; using its fallback.', error);
 		}
-		oceanBackdrop = new OceanBackdrop(document.getElementById('ocean-background'));
+		if (isObsBrowser) oceanBackdrop = new OceanBackdrop(document.getElementById('ocean-background'));
 		new Phaser.Game({
 			type: Phaser.CANVAS,
 			parent: 'game',

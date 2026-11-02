@@ -26,6 +26,7 @@ const ACTIVE_CHATTER_WINDOW_MS = 5 * 60 * 1000;
 const WATER_COMMAND_COOLDOWN_MS = 15_000;
 const MAX_TILE_WETNESS = 15;
 const MAX_ISLAND_LEVEL = 2;
+const MAX_SUBSCRIBER_BONUS_COUNT = 4;
 const HARVEST_COMMAND_QUEUE_FALLBACK_MS = 18_000;
 const ISLAND_UPGRADE_HARVESTS = { 2: 10, 3: 25 };
 const FARM_STATE_PATH = fileURLToPath(new URL('./farm-state.json', import.meta.url));
@@ -171,7 +172,7 @@ async function calculateHarvestRewards(kind, baseCropValue) {
 	let cumulativeValue = 0;
 	let cumulativePoints = 0;
 	const rewardRolls = baseValues.map(() => {
-		const shiny = Math.random() < debugShinyChance;
+		const shiny = Math.random() < getShinyChance();
 		return {
 			weightKg: rollVegetableWeightKg(),
 			shiny,
@@ -186,7 +187,7 @@ async function calculateHarvestRewards(kind, baseCropValue) {
 		const cropModifier = cropModifiers[index];
 		const shinyMultiplier = shiny ? SHINY_VALUE_MULTIPLIER : 1;
 		const specialModifierMultiplier = cropModifier?.modifier ? SPECIAL_MODIFIER_VALUE_MULTIPLIER : 1;
-		const value = Math.round(baseValue * Math.max(1, weightKg / averageWeight) * shinyMultiplier * specialModifierMultiplier * getPlantWorthMultiplier());
+		const value = Math.round(baseValue * Math.max(1, weightKg / averageWeight) * shinyMultiplier * specialModifierMultiplier);
 		const pointsAfterItem = Math.floor((cumulativeValue + value) * 0.2);
 		const pointsForItem = pointsAfterItem - cumulativePoints;
 		const bankReturn = value - pointsForItem;
@@ -218,11 +219,11 @@ function getSubscriberCount() {
 }
 
 function getStreamGrowthMultiplier() {
-	return 1 + getSubscriberCount() * 0.1;
+	return 1 + Math.min(getSubscriberCount(), MAX_SUBSCRIBER_BONUS_COUNT) * 0.1;
 }
 
-function getPlantWorthMultiplier() {
-	return 1 + getSubscriberCount() * 0.05;
+function getShinyChance() {
+	return Math.min(1, debugShinyChance + Math.min(getSubscriberCount(), MAX_SUBSCRIBER_BONUS_COUNT) * 0.03);
 }
 
 function updateCropReadyTimes(now = Date.now()) {
@@ -250,12 +251,14 @@ async function registerNewSubscriber(userId, username, isMockSimulator = false) 
 		subscriberCount,
 		flowerFrame: Math.min(3, subscriberCount - 1),
 		growthMultiplier: getStreamGrowthMultiplier(),
-		plantWorthMultiplier: getPlantWorthMultiplier()
+		shinyChance: getShinyChance()
 	});
 	broadcastFarmState();
-	const announcement = `@${displayName} just subbed for the first time! +10% growth speed +5% crop value!`;
+	const announcement = subscriberCount <= MAX_SUBSCRIBER_BONUS_COUNT
+		? `@${displayName} just subbed for the first time! +10% crop growth speed +3% shiny chance (${subscriberCount}/${MAX_SUBSCRIBER_BONUS_COUNT} subscriber bonuses)!`
+		: `@${displayName} just subbed for the first time! Subscriber farm bonuses are maxed at +40% crop growth speed and +12% shiny chance!`;
 	await announceFarmEvent(announcement, isMockSimulator);
-	console.log(`New subscriber ${displayName}: ${subscriberCount} this stream; crop growth x${getStreamGrowthMultiplier().toFixed(2)}, crop value x${getPlantWorthMultiplier().toFixed(2)}.`);
+	console.log(`New subscriber ${displayName}: ${subscriberCount} this stream; crop growth x${getStreamGrowthMultiplier().toFixed(2)}, shiny chance ${(getShinyChance() * 100).toFixed(0)}%.`);
 	return true;
 }
 
@@ -715,7 +718,7 @@ function createFarmStateMessage() {
 		level: getIslandLevel(),
 		subscriberCount: getSubscriberCount(),
 		growthMultiplier: getStreamGrowthMultiplier(),
-		plantWorthMultiplier: getPlantWorthMultiplier(),
+		shinyChance: getShinyChance(),
 		wetness: farmState.wetness,
 		crops
 	};
