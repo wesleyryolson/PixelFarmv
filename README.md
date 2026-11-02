@@ -8,33 +8,39 @@ Pixel Farm is a Twitch chat-driven farming game presented as a transparent brows
 
 ## Run locally
 
-Requirements: Node.js 18 or newer, npm, a Twitch account, and a Twitch Developer application.
+You need Node.js 18 or newer with npm, a Twitch account, and a Twitch Developer application. The Twitch CLI is needed to generate user access tokens. OBS is optional. The bot needs internet access for Twitch EventSub and the overlay needs internet access to load Phaser from jsDelivr.
 
-From the repository root:
+Clone or download the repository, then open a terminal in the `FarmBot` folder. If you cloned it with Git:
 
 ```bash
-cd FarmBot
+git clone https://github.com/wesleyryolson/PixelFarm.git
+cd PixelFarm/FarmBot
 npm install
+```
+
+If you downloaded a ZIP instead, extract it, open a terminal in the extracted `FarmBot` folder, and run `npm install` there.
+
+Create a local environment file from the example. Run the command for your shell:
+
+```bash
+# macOS / Linux
 cp .env.example .env.local
 ```
 
-On Windows PowerShell, copy the example with:
-
 ```powershell
+# Windows PowerShell
 Copy-Item .env.example .env.local
 ```
 
-Fill in the required Twitch values in `FarmBot/.env.local`, then start the bot and local web server:
+Follow [Twitch setup](#twitch-setup) below to fill in the required values in `FarmBot/.env.local`. Then, from the `FarmBot` folder, start the bot and local web server:
 
 ```bash
 node bot.js
 ```
 
-Open the overlay at [http://localhost:8080](http://localhost:8080). In a regular browser it uses a solid blue background; in an OBS Browser Source it detects OBS and uses the transparent, dithered ocean overlay.
+Keep this terminal running. Open the overlay at [http://localhost:8080](http://localhost:8080). In a regular browser it uses a solid blue background; in an OBS Browser Source it detects OBS and uses the transparent, dithered ocean overlay. The optional mock chat page is at [http://localhost:8080/chat-simulator](http://localhost:8080/chat-simulator); add it as a separate OBS Browser Source for a demo chat panel.
 
-The optional mock chat page is at [http://localhost:8080/chat-simulator](http://localhost:8080/chat-simulator). Add it as a separate OBS Browser Source for a demo chat panel. Keep the bot process running while either page is in use.
-
-The overlay loads Phaser 3.90 from jsDelivr, so the browser needs internet access. Port `8080` serves the pages and their local WebSocket connection.
+The mock chat simulates viewer activity, but the bot still needs a valid Twitch user token and an internet connection to start. Port `8080` serves the pages and their local WebSocket connection. If the port is already in use, stop the other process using it before starting Pixel Farm.
 
 ## OBS setup
 
@@ -47,28 +53,41 @@ The overlay detects OBS Browser Source through its `window.obsstudio` integratio
 
 ## Twitch setup
 
-1. Create a Twitch application in the [Developer Console](https://dev.twitch.tv/console) and copy its Client ID.
-2. Install and configure the [Twitch CLI](https://dev.twitch.tv/docs/cli/). While signed in as the bot account, generate a user token with the chat scopes and whisper scope:
+1. In the [Twitch Developer Console](https://dev.twitch.tv/console), register an application. Set its OAuth Redirect URL to `http://localhost:3000` for the Twitch CLI sign-in flow. Copy the application's **Client ID** and **Client Secret**; the bot uses the Client ID, while the CLI needs both values to generate tokens. Do not put the Client Secret in `.env.local` or share it.
+2. Install the [Twitch CLI](https://dev.twitch.tv/docs/cli/) for your operating system, then run `twitch configure` and enter the Client ID and Client Secret from the application above. Configure the CLI with the same application whose Client ID you will put in `CLIENT_ID`.
+3. Sign in to Twitch as the account that will run the bot, then generate its user token with the required chat scopes:
 
    ```bash
-   twitch token --user-token --scopes "user:read:chat user:write:chat user:manage:whispers"
+   twitch token --user-token --scopes "user:read:chat user:write:chat"
    ```
 
-   Put the token value in `OAUTH_TOKEN` without an `oauth:` prefix. This token must belong to the account identified by `BOT_USER_ID` and use the same Twitch application as `CLIENT_ID`.
-3. Set `CLIENT_ID`, the bot account's numeric ID in `BOT_USER_ID`, and the channel owner's numeric ID in `CHAT_CHANNEL_USER_ID`.
-4. Save the file as `FarmBot/.env.local`, then run `node bot.js` from the `FarmBot` directory. Look for `Validated token.` and a successful `channel.chat.message` subscription in the terminal.
+   The Twitch CLI opens a browser for consent. Copy the printed **User Access Token** into `OAUTH_TOKEN` in `.env.local` (do not include an `oauth:` prefix). Do not use an app access token. The token belongs to the bot account, so `BOT_USER_ID` must be that account's numeric Twitch ID.
+4. To find the numeric IDs, use the configured Twitch CLI once for each account:
+
+   ```bash
+   twitch api get /users -q login=bot_login
+   twitch api get /users -q login=channel_owner_login
+   ```
+
+   Copy each returned `data[0].id`. Put the bot account ID in `BOT_USER_ID` and the channel owner's ID in `CHAT_CHANNEL_USER_ID`. Replace the example logins with the accounts' Twitch login names (not display names).
+5. In `FarmBot/.env.local`, set `CLIENT_ID`, `OAUTH_TOKEN`, `BOT_USER_ID`, and `CHAT_CHANNEL_USER_ID`. Save the file and run `node bot.js` from the `FarmBot` directory. On startup, look for `Validated token.` and a successful `channel.chat.message` subscription in the terminal. If the token is expired or invalid, generate a new one and replace `OAUTH_TOKEN`.
+
+For private `!shop` and `!leaderboard` replies, include `user:manage:whispers` when generating the bot token. For the optional 500+ bit Cheer reward, include `bits:read`. For example, generate a token with all bot-account features enabled using `twitch token --user-token --scopes "user:read:chat user:write:chat user:manage:whispers bits:read"`.
 
 To enable real-time new-subscriber flowers and their farm bonuses, authorize a user token belonging to the channel owner with the `channel:read:subscriptions` scope. Add that scope to `OAUTH_TOKEN` when it is already the channel owner's token. If the bot uses its own account token, put the separate channel-owner token in `CHANNEL_OWNER_OAUTH_TOKEN`. Only new subscriptions count; resubscriptions do not. The flower display stops at four frames. The first four unique new subscribers each add 10% crop growth speed and 3 percentage points of shiny chance for the rest of the stream; additional subscribers still count for flowers but do not increase those bonuses. The subscriber bonuses cap at +40% growth speed and +12 percentage points of shiny chance.
 
-To create the separate owner token with Twitch CLI, sign in as the channel owner and run `twitch token --user-token --scopes "channel:read:subscriptions"`, then set its token value as `CHANNEL_OWNER_OAUTH_TOKEN`.
+To create the separate owner token with Twitch CLI, sign in as the channel owner in the browser flow and run `twitch token --user-token --scopes "channel:read:subscriptions"`. Put the returned token in `CHANNEL_OWNER_OAUTH_TOKEN`. It must use the same Twitch application as `CLIENT_ID`. The bot checks that this token belongs to `CHAT_CHANNEL_USER_ID` and has the required scope.
 
 ### Twitch permissions
+
+Pixel Farm uses **Twitch user access tokens** for its EventSub WebSocket and chat API calls. An app access token will not work here. Each user token must be authorized for the same Twitch application configured in `CLIENT_ID`; optional features need their scope granted to the account whose token is used.
 
 | Feature | Scope | Token |
 | --- | --- | --- |
 | Read chat commands | `user:read:chat` | Required on `OAUTH_TOKEN` |
 | Send public chat replies | `user:write:chat` | Required on `OAUTH_TOKEN` |
 | Whisper `!shop` and `!leaderboard` replies | `user:manage:whispers` | Optional on `OAUTH_TOKEN`; without it, private replies do not work |
+| Stream online/offline notifications | None beyond a valid user token | Uses `OAUTH_TOKEN` |
 | Count new subscribers and enable flower bonuses | `channel:read:subscriptions` | Optional broadcaster token; use `CHANNEL_OWNER_OAUTH_TOKEN` if `OAUTH_TOKEN` belongs to a separate bot account |
 | Grow all crops on a 500+ bit Cheer | `bits:read` | Optional on `OAUTH_TOKEN`; without it, no Cheer EventSub subscription is created |
 
@@ -102,6 +121,8 @@ When `OPENAI_API_KEY` is set, the bot uses OpenAI with `gpt-4o-mini`. Otherwise,
 | `!harvest <tile>` | Vote to harvest a fully grown crop. Each successful harvest produces two crop rewards. `#` before the tile number is optional. |
 | `!shop` | Send crop prices, shared bank balance, and island size; the channel owner sees the reply in chat, while other chatters receive a whisper. |
 | `!leaderboard` | Send the stream's top three farmers by points and the planter of its highest-value crop, including its weight and modifiers. Replies are public for the channel owner and whispers for other chatters. |
+| `!bit-simulate <number>` | Channel-owner-only test command. Simulates a Cheer of at least 500 bits and instantly grows all planted crops. |
+| `!sub-simulate` | Channel-owner-only test command. Simulates a unique new subscription, including its flower and subscriber bonuses. |
 
 When `DYNAMIC_HARVEST=true`, harvests require unique chatter votes based on active chatters from the preceding five minutes: fewer than 10 chatters requires one vote; 10–149 requires two; each additional 100 chatters adds one vote, up to five required at 350 or more. When disabled, one chatter can harvest as usual. The crop's planter receives 20% of its harvest value as leaderboard points, and the remaining 80% goes to the shared bank.
 
@@ -121,7 +142,7 @@ Type these commands into the terminal running `node bot.js`. They change the loc
 | `mock size` | Toggle the visual preview between 1×1 and 2×2. This does not change saved farm progression. |
 | `mock chatters` | Toggle simulated active chatters between 1 and 50. |
 | `mock bits` | Toggle random simulated Cheers of 501–3,000 bits; each grows all planted crops. |
-| `mock subs` | Toggle random simulated new subscriptions. They advance flowers and apply the same growth and value bonuses as live subscriber events. |
+| `mock subs` | Toggle random simulated new subscriptions. They advance flowers and apply the same growth and shiny chance bonuses as live subscriber events. |
 | `mock events` | Toggle both random Cheers and simulated new subscriptions together. |
 | `mock reset` | Stop mock activity and reset the saved farm to 1×1, 100g, empty tiles, and no subscriber bonuses; the leaderboard is kept. |
 | `mock status` | Show current activity, shiny chance, preview size, chatter setting, and event toggles. |

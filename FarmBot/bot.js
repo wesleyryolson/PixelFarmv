@@ -66,6 +66,7 @@ let debugIslandSize = null;
 let mockActivityLevel = 2;
 let mockBitsEnabled = false;
 let mockSubsEnabled = false;
+let simulatedSubscriberSequence = 0;
 const recentChatters = new Map();
 const waterCommandCooldowns = new Map();
 let chatCommandQueue = Promise.resolve();
@@ -1010,6 +1011,27 @@ function handleWebSocketMessage(data) {
 
 async function handleFarmCommand(event, text, chatterLogin, activeChattersAtMessage) {
 	const chatterName = event.chatter_user_name || event.chatter_user_login || chatterLogin;
+	if (/^!bit-simulate\b/i.test(text)) {
+		if (!isChannelOwner(event)) return;
+		const match = text.match(/^!bit-simulate\s+(\d+)$/i);
+		const bits = match ? Number(match[1]) : NaN;
+		if (!Number.isSafeInteger(bits) || bits < 500) {
+			await sendFarmReply(event, chatterLogin, 'Usage: !bit-simulate <number> (minimum 500 bits).', true);
+			return;
+		}
+		await growAllCropsImmediately(chatterName, bits);
+		return;
+	}
+	if (/^!sub-simulate\b/i.test(text)) {
+		if (!isChannelOwner(event)) return;
+		if (!/^!sub-simulate$/i.test(text)) {
+			await sendFarmReply(event, chatterLogin, 'Usage: !sub-simulate.', true);
+			return;
+		}
+		const simulatedId = `owner-sim-${Date.now()}-${++simulatedSubscriberSequence}`;
+		await registerNewSubscriber(simulatedId, chatterName);
+		return;
+	}
 	if (/^!shop$/i.test(text)) {
 		await sendFarmReply(event, chatterLogin, formatShopMessage(), !isChannelOwner(event));
 		return;
